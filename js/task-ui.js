@@ -1,0 +1,180 @@
+// Task rows and the add/edit sheet, shared by Today and Tasks.
+
+import { icon } from './icons.js';
+import { esc, h, openSheet, toast, enableSwipe } from './ui.js';
+import * as store from './store.js';
+import { state } from './store.js';
+import { todayKey, addDays, shortDate, formatMinutes, daysBetween } from './dates.js';
+
+const DURATIONS = [15, 30, 45, 60, 90, 120];
+
+/* ---------- Row ---------- */
+
+export function taskRow(task, { showList = true, hideToday = false } = {}) {
+  const today = todayKey();
+  const bits = [];
+  if (task.type === 'exam') {
+    bits.push(`<span class="tag exam">${icon('exam', 14)}Exam · ${esc(shortDate(task.deadline))}</span>`);
+  } else if (task.deadline && !(hideToday && task.deadline === today)) {
+    const late = !task.completed && task.deadline < today;
+    bits.push(late
+      ? `<span class="late">Overdue · ${esc(shortDate(task.deadline))}</span>`
+      : `<span>Due ${esc(shortDate(task.deadline).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase()))}</span>`);
+  }
+  if (task.type !== 'exam') bits.push(`<span class="num">${formatMinutes(task.duration)}</span>`);
+  const list = showList && store.listName(task.listId);
+  if (list) bits.push(`<span>${esc(list)}</span>`);
+
+  const row = h(`
+    <li class="row${task.completed ? ' done' : ''}" data-id="${task.id}">
+      <div class="row-swipe-bg" aria-hidden="true">${icon('check', 18)} Done</div>
+      <div class="row-inner">
+        <button class="check" type="button" aria-label="${task.completed ? 'Mark as not done' : 'Mark as done'}"><span>${icon('check', 14)}</span></button>
+        <button class="row-body" type="button">
+          <span class="title">${esc(task.title)}</span>
+          ${bits.length ? `<span class="sub">${bits.join('')}</span>` : ''}
+        </button>
+        ${task.priority === 'high' && !task.completed ? `<span class="prio" title="High priority">${icon('flag', 16)}</span>` : ''}
+      </div>
+    </li>`);
+
+  row.querySelector('.check').addEventListener('click', () => toggleDone(task, row));
+  row.querySelector('.row-body').addEventListener('click', () => openTaskEditor(task));
+  if (!task.completed) enableSwipe(row, () => complete(task));
+  return row;
+}
+
+function toggleDone(task, row) {
+  if (task.completed) { store.setCompleted(task.id, false); return; }
+  row.classList.add('done');
+  setTimeout(() => complete(task), 280);
+}
+
+function complete(task) {
+  store.setCompleted(task.id, true);
+  toast(`Done: ${task.title}`, { undo: () => store.setCompleted(task.id, false) });
+}
+
+/* ---------- Add / edit sheet ---------- */
+
+export function openTaskEditor(existing, defaults = {}) {
+  const isNew = !existing;
+  const task = isNew ? store.newTask(defaults) : structuredClone(existing);
+  const hasExtras = !isNew && (task.type === 'exam' || task.priority !== 'medium' || task.listId || task.notes);
+
+  openSheet({
+    title: isNew ? (task.type === 'exam' ? 'New exam' : 'New task') : 'Edit task',
+    action: 'Save',
+    onAction: save,
+    build(body, close, saveBtn) {
+      body.innerHTML = `
+        <textarea class="title-input" rows="1" placeholder="What needs doing?" enterkeyhint="done" aria-label="Title">${esc(task.title)}</textarea>
+
+        <div class="field" data-field="duration">
+          <span class="label">Time needed</span>
+          <div class="chips">${DURATIONS.map((m) => `<button type="button" class="chip" data-min="${m}" aria-pressed="${task.duration === m}">${formatMinutes(m)}</button>`).join('')}</div>
+        </div>
+
+        <div class="field">
+          <span class="label" data-date-label>${task.type === 'exam' ? 'Exam date' : 'Deadline'}</span>
+          <div class="chips" style="margin-bottom:8px">
+            <button type="button" class="chip" data-quick="0">Today</button>
+            <button type="button" class="chip" data-quick="1">Tomorrow</button>
+            <button type="button" class="chip" data-quick="7">In a week</button>
+          </div>
+          <div class="date-wrap">
+            <input class="input num" type="date" value="${task.deadline || ''}" aria-label="Date">
+            <button type="button" class="text-button date-clear" data-clear>Clear</button>
+          </div>
+        </div>
+
+        <button type="button" class="more-toggle" aria-expanded="${hasExtras}">${icon('caretRight', 16)} More options</button>
+        <div class="more" ${hasExtras ? '' : 'hidden'}>
+          <div class="field">
+            <span class="label">Type</span>
+            <div class="segmented" data-seg="type">
+              <button type="button" data-v="task" aria-pressed="${task.type === 'task'}">Task</button>
+              <button type="button" data-v="exam" aria-pressed="${task.type === 'exam'}">Exam</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="label">Priority</span>
+            <div class="segmented" data-seg="priority">
+              ${['low', 'medium', 'high'].map((p) => `<button type="button" data-v="${p}" aria-pressed="${task.priority === p}">${p[0].toUpperCase() + p.slice(1)}</button>`).join('')}
+            </div>
+          </div>
+          <div class="field">
+            <label class="label" for="list-select">List</label>
+            <select id="list-select" class="select">
+              <option value="">No list</option>
+              ${state.lists.map((l) => `<option value="${l.id}" ${task.listId === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label class="label" for="notes">Notes</label>
+            <textarea id="notes" class="textarea">${esc(task.notes)}</textarea>
+          </div>
+        </div>
+
+        ${isNew ? '' : `<div class="delete-row"><button type="button" class="text-button danger with-icon" data-delete>${icon('trash', 18)} Delete task</button></div>`}
+      `;
+
+      const title = body.querySelector('.title-input');
+      const grow = () => { title.style.height = 'auto'; title.style.height = title.scrollHeight + 'px'; };
+      const sync = () => { saveBtn.disabled = !title.value.trim(); };
+      title.addEventListener('input', () => { task.title = title.value.replace(/\n/g, ' '); grow(); sync(); });
+      title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (title.value.trim()) save(close); } });
+      sync(); requestAnimationFrame(grow);
+      if (isNew) setTimeout(() => title.focus(), 60);
+
+      // Duration
+      body.querySelectorAll('[data-min]').forEach((b) => b.addEventListener('click', () => {
+        task.duration = Number(b.dataset.min);
+        body.querySelectorAll('[data-min]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      }));
+
+      // Deadline
+      const dateInput = body.querySelector('input[type=date]');
+      const setDate = (key) => { task.deadline = key || null; dateInput.value = key || ''; markQuick(); };
+      const markQuick = () => body.querySelectorAll('[data-quick]').forEach((b) =>
+        b.setAttribute('aria-pressed', !!task.deadline && daysBetween(todayKey(), task.deadline) === Number(b.dataset.quick)));
+      body.querySelectorAll('[data-quick]').forEach((b) => b.addEventListener('click', () => setDate(addDays(todayKey(), Number(b.dataset.quick)))));
+      dateInput.addEventListener('change', () => setDate(dateInput.value));
+      body.querySelector('[data-clear]').addEventListener('click', () => setDate(null));
+      markQuick();
+
+      // More options
+      const moreBtn = body.querySelector('.more-toggle');
+      const more = body.querySelector('.more');
+      moreBtn.addEventListener('click', () => {
+        const open = more.hidden;
+        more.hidden = !open;
+        moreBtn.setAttribute('aria-expanded', open);
+      });
+      body.querySelectorAll('[data-seg]').forEach((seg) => seg.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+        task[seg.dataset.seg] = b.dataset.v;
+        seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+        if (seg.dataset.seg === 'type') {
+          body.querySelector('[data-date-label]').textContent = task.type === 'exam' ? 'Exam date' : 'Deadline';
+          body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
+        }
+      })));
+      body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
+      body.querySelector('#list-select').addEventListener('change', (e) => { task.listId = e.target.value || null; });
+      body.querySelector('#notes').addEventListener('input', (e) => { task.notes = e.target.value; });
+
+      // Delete
+      body.querySelector('[data-delete]')?.addEventListener('click', async () => {
+        close();
+        const removed = await store.deleteTask(task.id);
+        toast('Task deleted', { undo: () => store.saveTask(removed) });
+      });
+    },
+  });
+
+  function save(close) {
+    if (!task.title.trim()) return;
+    store.saveTask(task);
+    close();
+  }
+}
