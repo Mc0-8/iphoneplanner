@@ -4,8 +4,9 @@ import * as store from '../store.js';
 import { state } from '../store.js';
 import { applyTheme } from '../theme.js';
 import { todayKey, formatMinutes } from '../dates.js';
+import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 
-export const VERSION = '0.1.0 · phase 1';
+export const VERSION = '0.2.0 · phase 2';
 
 export function openSettings() {
   openSheet({
@@ -26,9 +27,38 @@ export function openSettings() {
         </section>
 
         <section class="group">
-          <h3>Tasks</h3>
+          <h3>Schedule</h3>
+          <button class="setting" data-open="availability">
+            <span>Available hours<span class="hint" data-hint="availability"></span></span>${icon('caretRight', 16)}
+          </button>
+          <label class="setting" for="daily-cap">
+            <span>Daily limit<span class="hint">Most planned work in one day</span></span>
+            <select id="daily-cap" class="select num" style="width:auto">
+              ${[60, 90, 120, 150, 180, 210, 240, 300, 360, 420, 480].map((m) => `<option value="${m}" ${state.settings.dailyCap === m ? 'selected' : ''}>${formatMinutes(m)}</option>`).join('')}
+            </select>
+          </label>
+          <button class="setting" data-open="commitments">
+            <span>Fixed commitments<span class="hint" data-hint="commitments"></span></span>${icon('caretRight', 16)}
+          </button>
+          <button class="setting" data-open="daysoff">
+            <span>Days off<span class="hint" data-hint="daysoff"></span></span>${icon('caretRight', 16)}
+          </button>
+          <label class="setting" for="cutoff">
+            <span>Hard subjects before<span class="hint">Hard subjects are planned earlier in the day</span></span>
+            <input id="cutoff" class="input num" type="time" step="900" value="${state.settings.hardCutoff}" style="width:auto">
+          </label>
+        </section>
+
+        <section class="group">
+          <h3>Study and tasks</h3>
+          <label class="setting" for="session-length">
+            <span>Study session length<span class="hint">With a ${state.settings.breakMinutes}-minute break between blocks</span></span>
+            <select id="session-length" class="select num" style="width:auto">
+              ${[30, 45, 60, 75, 90].map((m) => `<option value="${m}" ${state.settings.sessionLength === m ? 'selected' : ''}>${formatMinutes(m)}</option>`).join('')}
+            </select>
+          </label>
           <label class="setting" for="default-duration">
-            <span>Default time needed</span>
+            <span>Default time for a task</span>
             <select id="default-duration" class="select num" style="width:auto">
               ${[15, 30, 45, 60, 90].map((m) => `<option value="${m}" ${state.settings.defaultDuration === m ? 'selected' : ''}>${formatMinutes(m)}</option>`).join('')}
             </select>
@@ -57,6 +87,24 @@ export function openSettings() {
 
       body.querySelector('#default-duration').addEventListener('change', (e) =>
         store.updateSettings({ defaultDuration: Number(e.target.value) }));
+
+      body.querySelector('#daily-cap').addEventListener('change', (e) => store.updateSettings({ dailyCap: Number(e.target.value) }));
+      body.querySelector('#session-length').addEventListener('change', (e) => store.updateSettings({ sessionLength: Number(e.target.value) }));
+      body.querySelector('#cutoff').addEventListener('change', (e) => { if (e.target.value) store.updateSettings({ hardCutoff: e.target.value }); });
+      const opens = { availability: openAvailability, commitments: openCommitments, daysoff: openDaysOff };
+      body.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => opens[b.dataset.open]()));
+      const hints = () => {
+        const on = WEEK.filter(([wd]) => state.settings.availability[wd].on);
+        const wk = state.settings.availability[1], we = state.settings.availability[6];
+        body.querySelector('[data-hint="availability"]').textContent = `${on.length} days · weekdays ${wk.on ? `${wk.start}–${wk.end}` : 'off'}, Sat ${we.on ? `${we.start}–${we.end}` : 'off'}`;
+        const n = state.commitments.length;
+        body.querySelector('[data-hint="commitments"]').textContent = n ? `${n} set: ${state.commitments.map((c) => c.name).slice(0, 3).join(', ')}` : 'School, sport, a job…';
+        const off = state.daysOff.filter((d) => d.weekday !== null && d.weekday !== undefined).length + state.daysOff.filter((d) => d.date && d.date >= todayKey()).length;
+        body.querySelector('[data-hint="daysoff"]').textContent = off ? `${off} set` : 'Holidays, sick days, a rest day';
+      };
+      hints();
+      const unsub = store.subscribe(hints);
+      new MutationObserver((_, obs) => { if (!document.body.contains(body)) { unsub(); obs.disconnect(); } }).observe(document.getElementById('sheet-layer'), { childList: true });
 
       body.querySelector('[data-backup]').addEventListener('click', backup);
 

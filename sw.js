@@ -3,7 +3,7 @@
 // so a new version pushed to GitHub shows up the next time the app is opened.
 // Bump CACHE when the list of files changes.
 
-const CACHE = 'planner-v1';
+const CACHE = 'planner-v2';
 const FILES = [
   './',
   'index.html',
@@ -17,6 +17,8 @@ const FILES = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'js/app.js',
+  'js/block-ui.js',
+  'js/scheduler.js',
   'js/db.js',
   'js/dates.js',
   'js/icons.js',
@@ -26,6 +28,9 @@ const FILES = [
   'js/ui.js',
   'js/screens/lists.js',
   'js/screens/placeholder.js',
+  'js/screens/schedule.js',
+  'js/screens/study.js',
+  'js/screens/week.js',
   'js/screens/settings.js',
   'js/screens/tasks.js',
   'js/screens/today.js',

@@ -39,6 +39,46 @@ export function longToday() {
   return new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
+/** Monday of the week containing `key`. */
+export function mondayOf(key) {
+  const d = fromKey(key);
+  const offset = (d.getDay() + 6) % 7; // Mon = 0
+  d.setDate(d.getDate() - offset);
+  return toKey(d);
+}
+
+export const weekday = (key) => fromKey(key).getDay(); // 0 = Sunday
+
+/** "16:30" ⇄ 990 minutes after midnight. */
+export function toMin(hhmm) {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+export function fromMin(min) {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+}
+export function nowMin(d = new Date()) {
+  return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+}
+
+/** "16 – 22 Nov" or "30 Nov – 6 Dec". */
+export function weekRange(mondayKey) {
+  const a = fromKey(mondayKey), b = fromKey(addDays(mondayKey, 6));
+  const mon = (d) => d.toLocaleDateString('en-GB', { month: 'short' });
+  return a.getMonth() === b.getMonth()
+    ? `${a.getDate()} – ${b.getDate()} ${mon(b)}`
+    : `${a.getDate()} ${mon(a)} – ${b.getDate()} ${mon(b)}`;
+}
+
+export function dayTitle(key) {
+  const diff = daysBetween(todayKey(), key);
+  const d = fromKey(key).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  if (diff === 0) return `Today, ${d}`;
+  if (diff === 1) return `Tomorrow, ${d}`;
+  return d;
+}
+
 /** 90 → "1 h 30 min", 45 → "45 min", 120 → "2 h". */
 export function formatMinutes(min) {
   if (!min) return '0 min';

@@ -1,8 +1,8 @@
 // Small IndexedDB wrapper. All data stays on the device.
 
 const DB_NAME = 'planner';
-const DB_VERSION = 1;
-export const STORES = ['tasks', 'lists', 'settings'];
+const DB_VERSION = 2;
+export const STORES = ['tasks', 'lists', 'settings', 'blocks', 'subjects', 'commitments', 'daysOff'];
 
 let dbPromise;
 
@@ -58,6 +58,17 @@ export async function remove(store, id) {
   if (!db) return;
   const tx = db.transaction(store, 'readwrite');
   tx.objectStore(store).delete(id);
+  return done(tx);
+}
+
+/** Replace the contents of one store (used for the scheduler's blocks). */
+export async function replaceStore(store, items) {
+  const db = await open();
+  if (!db) return;
+  const tx = db.transaction(store, 'readwrite');
+  const os = tx.objectStore(store);
+  os.clear();
+  for (const item of items) os.put(item);
   return done(tx);
 }
 

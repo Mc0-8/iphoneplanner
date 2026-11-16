@@ -97,6 +97,13 @@ export function openTaskEditor(existing, defaults = {}) {
               <button type="button" data-v="exam" aria-pressed="${task.type === 'exam'}">Exam</button>
             </div>
           </div>
+          <div class="field" data-field="subject" ${task.type === 'exam' && state.subjects.length ? '' : 'hidden'}>
+            <label class="label" for="subject-select">Subject<span class="hint">Gets 50% more study time in the 2 weeks before the exam</span></label>
+            <select id="subject-select" class="select">
+              <option value="">No subject</option>
+              ${state.subjects.map((s) => `<option value="${s.id}" ${task.subjectId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+            </select>
+          </div>
           <div class="field">
             <span class="label">Priority</span>
             <div class="segmented" data-seg="priority">
@@ -157,9 +164,11 @@ export function openTaskEditor(existing, defaults = {}) {
         if (seg.dataset.seg === 'type') {
           body.querySelector('[data-date-label]').textContent = task.type === 'exam' ? 'Exam date' : 'Deadline';
           body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
+          body.querySelector('[data-field="subject"]').hidden = task.type !== 'exam' || !state.subjects.length;
         }
       })));
       body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
+      body.querySelector('#subject-select').addEventListener('change', (e) => { task.subjectId = e.target.value || null; });
       body.querySelector('#list-select').addEventListener('change', (e) => { task.listId = e.target.value || null; });
       body.querySelector('#notes').addEventListener('input', (e) => { task.notes = e.target.value; });
 

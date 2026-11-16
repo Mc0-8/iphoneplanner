@@ -39,8 +39,10 @@ export function render(el) {
   inboxEl.querySelector('button').addEventListener('click', () => { inboxOpen = !inboxOpen; render(el); });
   if (inboxOpen) {
     const ul = inboxEl.querySelector('ul');
-    if (inbox.length) inbox.forEach((t) => ul.append(taskRow(t)));
-    else ul.append(h('<li><p class="empty">Inbox is empty. Tasks without a list or deadline land here.</p></li>'));
+    if (inbox.length) {
+      inbox.forEach((t) => ul.append(taskRow(t)));
+      ul.append(h('<li><p class="fineprint">Inbox tasks aren\'t planned yet. Give one a list or a deadline and it gets a slot.</p></li>'));
+    } else ul.append(h('<li><p class="empty">Inbox is empty. Tasks without a list or deadline land here.</p></li>'));
   }
   el.append(inboxEl);
 

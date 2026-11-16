@@ -2,7 +2,12 @@
 
 A calm planner and to-do app for iPhone. It's a web app that you add to your home screen, and it works offline. All data stays on your phone.
 
-This build is **phase 1** of the plan: tasks, lists, an inbox, the Today view, light and dark themes, offline support, and backup and restore. The scheduler, study planner, drag and drop, and notes come in later phases.
+This build covers **phases 1 and 2** of the plan.
+
+- **Phase 1:** tasks, lists, inbox, light and dark themes, offline support, backup and restore.
+- **Phase 2:** the scheduler (spreads tasks and study evenly, splits big tasks, daily limit, fixed commitments, days off), the study planner (weekly hours per subject, exam boost, streak), the Today list with a moving "now" line, the end-of-day check-in, and a Week calendar you can swipe through 5 weeks.
+
+Drag and drop comes in phase 3, notes and reviews in phase 4.
 
 ## Put it on your iPhone
 
@@ -31,9 +36,11 @@ Then open http://localhost:8000.
 | `sw.js` | Offline cache. Add any new file to `FILES` and bump `CACHE`. |
 | `css/app.css` | All styles and design tokens |
 | `js/app.js` | Tab bar, screen switching, add button |
-| `js/store.js` | App data and saving |
+| `js/store.js` | App data and saving; re-plans after every change |
+| `js/scheduler.js` | The scheduling rules (pure function, no UI) |
+| `js/block-ui.js` | Rows for the timed day list and the now line |
 | `js/db.js` | IndexedDB storage |
 | `js/task-ui.js` | Task rows and the add/edit sheet |
-| `js/screens/` | One file per screen (Today, Tasks, Settings, Lists) |
+| `js/screens/` | One file per screen (Today, Week, Study, Tasks, Settings, schedule settings, Lists) |
 | `fonts/`, `icons/` | Bricolage Grotesque, IBM Plex Sans (SIL OFL), app icons |
 | `js/icons.js` | Phosphor Icons (MIT) |

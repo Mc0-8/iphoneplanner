@@ -7,12 +7,14 @@ import { applyTheme } from './theme.js';
 import { openTaskEditor } from './task-ui.js';
 import * as today from './screens/today.js';
 import * as tasks from './screens/tasks.js';
+import * as week from './screens/week.js';
+import * as study from './screens/study.js';
 import { placeholder } from './screens/placeholder.js';
 
 const TABS = [
   { id: 'today', label: 'Today', icon: 'today', screen: today },
-  { id: 'week', label: 'Week', icon: 'week', screen: placeholder('Week', 'Your week view arrives with the scheduler in phase 2.') },
-  { id: 'study', label: 'Study', icon: 'study', screen: placeholder('Study', 'Subjects and weekly study hours arrive in phase 2.') },
+  { id: 'week', label: 'Week', icon: 'week', screen: week },
+  { id: 'study', label: 'Study', icon: 'study', screen: study },
   { id: 'tasks', label: 'Tasks', icon: 'tasks', screen: tasks },
   { id: 'notes', label: 'Notes', icon: 'notes', screen: placeholder('Notes', 'Notes and reviews arrive in phase 4.') },
 ];
@@ -44,18 +46,15 @@ function render() {
 
 addBtn.addEventListener('click', () => {
   const tab = currentTab();
-  openTaskEditor(null, tab.screen.addDefaults ? tab.screen.addDefaults() : {});
+  if (tab.screen.onAdd) tab.screen.onAdd();
+  else openTaskEditor(null, tab.screen.addDefaults ? tab.screen.addDefaults() : {});
 });
 
 window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
 
-// Re-render when the day changes while the app stays open.
-let lastDay = new Date().toDateString();
+// Re-plan when the app comes back to the front (time has moved on, maybe a new day).
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && new Date().toDateString() !== lastDay) {
-    lastDay = new Date().toDateString();
-    render();
-  }
+  if (document.visibilityState === 'visible') store.replan();
 });
 
 async function start() {
