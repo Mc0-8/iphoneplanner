@@ -1,8 +1,8 @@
 // Small IndexedDB wrapper. All data stays on the device.
 
 const DB_NAME = 'planner';
-const DB_VERSION = 2;
-export const STORES = ['tasks', 'lists', 'settings', 'blocks', 'subjects', 'commitments', 'daysOff'];
+const DB_VERSION = 3;
+export const STORES = ['tasks', 'lists', 'settings', 'blocks', 'subjects', 'commitments', 'daysOff', 'notes', 'topics', 'habits', 'grades', 'timeLogs'];
 
 let dbPromise;
 

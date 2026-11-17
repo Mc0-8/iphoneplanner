@@ -6,7 +6,7 @@ import { applyTheme } from '../theme.js';
 import { todayKey, formatMinutes } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 
-export const VERSION = '0.3.0 · phase 3';
+export const VERSION = '0.4.0 · phase 4';
 
 export function openSettings() {
   openSheet({
@@ -57,6 +57,10 @@ export function openSettings() {
               ${[30, 45, 60, 75, 90].map((m) => `<option value="${m}" ${state.settings.sessionLength === m ? 'selected' : ''}>${formatMinutes(m)}</option>`).join('')}
             </select>
           </label>
+          <label class="setting" for="pomodoro">
+            <span>Pomodoro in focus mode<span class="hint">25 minutes of work, then a 5-minute break</span></span>
+            <input id="pomodoro" type="checkbox" class="switch" ${state.settings.pomodoro ? 'checked' : ''}>
+          </label>
           <label class="setting" for="default-duration">
             <span>Default time for a task</span>
             <select id="default-duration" class="select num" style="width:auto">
@@ -89,6 +93,7 @@ export function openSettings() {
         store.updateSettings({ defaultDuration: Number(e.target.value) }));
 
       body.querySelector('#daily-cap').addEventListener('change', (e) => store.updateSettings({ dailyCap: Number(e.target.value) }));
+      body.querySelector('#pomodoro').addEventListener('change', (e) => store.updateSettings({ pomodoro: e.target.checked }));
       body.querySelector('#session-length').addEventListener('change', (e) => store.updateSettings({ sessionLength: Number(e.target.value) }));
       body.querySelector('#cutoff').addEventListener('change', (e) => { if (e.target.value) store.updateSettings({ hardCutoff: e.target.value }); });
       const opens = { availability: openAvailability, commitments: openCommitments, daysoff: openDaysOff };

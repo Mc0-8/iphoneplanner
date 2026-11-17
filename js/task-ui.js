@@ -8,6 +8,14 @@ import { todayKey, addDays, shortDate, formatMinutes, daysBetween } from './date
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
+/** "Tasks usually take you 25% longer than you plan" — from the focus timer's logs. */
+function estimateHint() {
+  const r = store.estimateRatio();
+  if (!r || Math.abs(r - 1) < 0.1) return '';
+  const pct = Math.round(Math.abs(r - 1) * 100);
+  return `<p class="fineprint" style="margin:8px 0 0">From your timer: tasks usually take you ${pct}% ${r > 1 ? 'longer' : 'less time'} than you plan.</p>`;
+}
+
 /* ---------- Row ---------- */
 
 export function taskRow(task, { showList = true, hideToday = false } = {}) {
@@ -22,6 +30,7 @@ export function taskRow(task, { showList = true, hideToday = false } = {}) {
       : `<span>Due ${esc(shortDate(task.deadline).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase()))}</span>`);
   }
   if (task.type !== 'exam') bits.push(`<span class="num">${formatMinutes(task.duration)}</span>`);
+  if (task.repeat && task.repeat !== 'none') bits.push(`<span>${{ daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly' }[task.repeat]}</span>`);
   const list = showList && store.listName(task.listId);
   if (list) bits.push(`<span>${esc(list)}</span>`);
 
@@ -80,6 +89,7 @@ export function openTaskEditor(existing, defaults = {}) {
         <div class="field" data-field="duration">
           <span class="label">Time needed</span>
           <div class="chips">${DURATIONS.map((m) => `<button type="button" class="chip" data-min="${m}" aria-pressed="${task.duration === m}">${formatMinutes(m)}</button>`).join('')}</div>
+          ${estimateHint()}
         </div>
 
         <div class="field">
@@ -115,6 +125,12 @@ export function openTaskEditor(existing, defaults = {}) {
             <span class="label">Priority</span>
             <div class="segmented" data-seg="priority">
               ${['low', 'medium', 'high'].map((p) => `<button type="button" data-v="${p}" aria-pressed="${task.priority === p}">${p[0].toUpperCase() + p.slice(1)}</button>`).join('')}
+            </div>
+          </div>
+          <div class="field" data-field="repeat" ${task.type === 'exam' ? 'hidden' : ''}>
+            <span class="label">Repeat<span class="hint">When you finish it, the next one is added automatically</span></span>
+            <div class="segmented" data-seg="repeat">
+              ${[['none', 'Never'], ['daily', 'Daily'], ['weekdays', 'Weekdays'], ['weekly', 'Weekly']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${(task.repeat || 'none') === v}">${l}</button>`).join('')}
             </div>
           </div>
           <div class="field">
@@ -172,7 +188,9 @@ export function openTaskEditor(existing, defaults = {}) {
           body.querySelector('[data-date-label]').textContent = task.type === 'exam' ? 'Exam date' : 'Deadline';
           body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
           body.querySelector('[data-field="subject"]').hidden = task.type !== 'exam' || !state.subjects.length;
+          body.querySelector('[data-field="repeat"]').hidden = task.type === 'exam';
         }
+        if (seg.dataset.seg === 'repeat' && task.repeat !== 'none' && !task.deadline) setDate(todayKey());
       })));
       body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
       body.querySelector('#subject-select').addEventListener('change', (e) => { task.subjectId = e.target.value || null; });

@@ -22,6 +22,12 @@ export function dayItems(key) {
 
 /** "Essay · part 2 of 6" style details for a block. */
 export function describe(b) {
+  if (b.kind === 'review') {
+    const topics = (b.topicIds || []).map((id) => state.topics.find((t) => t.id === id)).filter(Boolean);
+    const s = topics[0] && store.subjectById(topics[0].subjectId);
+    return { title: `Review: ${topics.map((t) => t.name).join(', ') || 'topics'}`, dot: s?.colour, kindLabel: 'Review',
+      onOpen: () => import('./screens/review.js').then((m) => m.openReview(topics.map((t) => t.id), b.id)) };
+  }
   if (b.kind === 'study') {
     const s = store.subjectById(b.subjectId);
     return { title: s ? s.name : 'Study', dot: s?.colour, kindLabel: 'Study', onOpen: s ? () => openSubjectEditor(s) : null };
@@ -76,7 +82,12 @@ export function itemRow(item, { live = false } = {}) {
       toast(`Done: ${d.title}`, { undo: () => store.setBlockStatus(b.id, 'planned') });
     }, 250);
   });
-  if (d.onOpen) row.querySelector('.tbody').addEventListener('click', d.onOpen);
+  row.querySelector('.tbody').addEventListener('click', () => {
+    // Today's planned study and task blocks open focus mode; everything else opens its editor.
+    if (b.status === 'planned' && b.date === todayKey() && b.kind !== 'review') {
+      import('./screens/focus.js').then((m) => m.openFocus(b.id));
+    } else d.onOpen?.();
+  });
   return row;
 }
 
@@ -107,10 +118,11 @@ export function openBlockMenu(block) {
   const isTask = block.kind === 'task';
   const tomorrow = addDays(block.date < todayKey() ? todayKey() : block.date, 1);
   const actions = [
-    { id: 'edit', icon: 'pencil', label: isTask ? 'Edit task' : 'Edit subject', show: !!d.onOpen },
+    { id: 'focus', icon: 'clock', label: 'Start focus timer', show: block.status === 'planned' && block.date === todayKey() && block.kind !== 'review' },
+    { id: 'edit', icon: 'pencil', label: block.kind === 'review' ? 'Start review' : isTask ? 'Edit task' : 'Edit subject', show: !!d.onOpen },
     { id: 'pin', icon: block.pinned ? 'unpin' : 'pin', label: block.pinned ? 'Unpin (let the planner move it)' : 'Pin to this time', show: block.status === 'planned' },
     { id: 'tomorrow', icon: 'arrowRight', label: 'Move to tomorrow', show: block.status === 'planned' && tomorrow <= horizonEnd() },
-    { id: 'delete', icon: isTask ? 'trash' : 'skip', label: isTask ? 'Delete task' : 'Skip this session', show: true, danger: true },
+    { id: 'delete', icon: isTask ? 'trash' : 'skip', label: isTask ? 'Delete task' : block.kind === 'review' ? 'Skip this review' : 'Skip this session', show: block.status === 'planned' || isTask, danger: true },
   ].filter((a) => a.show);
 
   openSheet({
@@ -123,6 +135,7 @@ export function openBlockMenu(block) {
         close();
         const a = btn.dataset.a;
         if (a === 'edit') d.onOpen();
+        if (a === 'focus') import('./screens/focus.js').then((m) => m.openFocus(block.id));
         if (a === 'pin') await store.setPinned(block.id, !block.pinned);
         if (a === 'tomorrow') {
           const start = await store.moveBlockToDay(block.id, tomorrow);
@@ -132,7 +145,11 @@ export function openBlockMenu(block) {
           const removed = await store.deleteTask(block.taskId);
           if (removed) toast('Task deleted', { undo: () => store.saveTask(removed) });
         }
-        if (a === 'delete' && !isTask) {
+        if (a === 'delete' && block.kind === 'review') {
+          await store.skipReview(block.id);
+          toast('Review moved to tomorrow');
+        }
+        if (a === 'delete' && block.kind === 'study') {
           await store.setBlockStatus(block.id, 'missed');
           toast('Skipped. The time is planned on another day.', { undo: () => store.setBlockStatus(block.id, 'planned') });
         }

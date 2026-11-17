@@ -9,7 +9,7 @@ import * as today from './screens/today.js';
 import * as tasks from './screens/tasks.js';
 import * as week from './screens/week.js';
 import * as study from './screens/study.js';
-import { placeholder } from './screens/placeholder.js';
+import * as notes from './screens/notes.js';
 import { closeDayView } from './screens/day-view.js';
 
 const TABS = [
@@ -17,7 +17,7 @@ const TABS = [
   { id: 'week', label: 'Week', icon: 'week', screen: week },
   { id: 'study', label: 'Study', icon: 'study', screen: study },
   { id: 'tasks', label: 'Tasks', icon: 'tasks', screen: tasks },
-  { id: 'notes', label: 'Notes', icon: 'notes', screen: placeholder('Notes', 'Notes and reviews arrive in phase 4.') },
+  { id: 'notes', label: 'Notes', icon: 'notes', screen: notes },
 ];
 
 const screenEl = document.getElementById('screen');
@@ -51,7 +51,17 @@ addBtn.addEventListener('click', () => {
   else openTaskEditor(null, tab.screen.addDefaults ? tab.screen.addDefaults() : {});
 });
 
-window.addEventListener('hashchange', () => { closeDayView(true); window.scrollTo(0, 0); render(); });
+window.addEventListener('focuschange', () => render());
+
+// If the app stays open past midnight, plan the new day.
+import { todayKey } from './dates.js';
+let planDay = todayKey();
+function checkDay() {
+  if (todayKey() !== planDay) { planDay = todayKey(); store.replan(); return true; }
+  return false;
+}
+setInterval(checkDay, 60000);
+window.addEventListener('hashchange', () => { closeDayView(true); window.scrollTo(0, 0); if (!checkDay()) render(); });
 
 // Re-plan when the app comes back to the front (time has moved on, maybe a new day).
 document.addEventListener('visibilitychange', () => {

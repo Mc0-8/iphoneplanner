@@ -2,7 +2,7 @@
 // After every change the scheduler re-plans the coming weeks (see scheduler.js).
 
 import * as db from './db.js';
-import { todayKey } from './dates.js';
+import { todayKey, addDays, weekday } from './dates.js';
 import { plan, freeSlot, windowFor } from './scheduler.js';
 
 export const SUBJECT_COLOURS = ['#6B8F71', '#4F6D8F', '#C29A3B', '#8A5A7A', '#3F8A8A', '#7A7368'];
@@ -21,10 +21,14 @@ const DEFAULT_SETTINGS = {
   breakMinutes: 10,
   hardCutoff: '18:00',
   checkinFrom: '20:00',
+  pomodoro: false,
 };
+
+export const REVIEW_STEPS = [1, 3, 7, 14, 30]; // days until the next review
 
 export const state = {
   tasks: [], lists: [], subjects: [], commitments: [], daysOff: [], blocks: [],
+  notes: [], topics: [], habits: [], grades: [], timeLogs: [],
   settings: structuredClone(DEFAULT_SETTINGS),
   plan: { overflow: [], weeks: [] },
 };
@@ -44,6 +48,7 @@ export async function load() {
   state.commitments = data.commitments;
   state.daysOff = data.daysOff;
   state.blocks = data.blocks;
+  for (const k of ['notes', 'topics', 'habits', 'grades', 'timeLogs']) state[k] = data[k] || [];
   state.settings = { ...structuredClone(DEFAULT_SETTINGS), ...(data.settings.find((s) => s.id === 'app') || {}) };
 
   // First run: two starter lists.
@@ -94,12 +99,46 @@ export async function saveTask(task) {
   await commit();
 }
 
+/** Next date for a repeating task, after `from` and not before today. */
+export function nextOccurrence(repeat, from) {
+  const step = (k) => {
+    if (repeat === 'daily') return addDays(k, 1);
+    if (repeat === 'weekly') return addDays(k, 7);
+    if (repeat === 'weekdays') { let n = addDays(k, 1); while (weekday(n) === 0 || weekday(n) === 6) n = addDays(n, 1); return n; }
+    return null;
+  };
+  let n = step(from || todayKey());
+  while (n && n < todayKey()) n = step(n);
+  return n;
+}
+
+/** Set a task's completed state; a repeating task gets its next copy when finished. */
+async function markTask(task, completed) {
+  if (task.completed === completed) return;
+  task.completed = completed;
+  task.completedAt = completed ? Date.now() : null;
+  if (completed && task.repeat && task.repeat !== 'none' && !task.nextId) {
+    const next = { ...structuredClone(task), id: uid(), completed: false, completedAt: null, nextId: null, createdAt: Date.now(),
+      deadline: nextOccurrence(task.repeat, task.deadline) };
+    task.nextId = next.id;
+    state.tasks.push(next);
+    await db.put('tasks', next);
+  }
+  if (!completed && task.nextId) {
+    const next = state.tasks.find((t) => t.id === task.nextId);
+    if (next && !next.completed) {
+      state.tasks = state.tasks.filter((t) => t.id !== next.id);
+      await db.remove('tasks', next.id);
+    }
+    task.nextId = null;
+  }
+  await db.put('tasks', task);
+}
+
 export async function setCompleted(id, completed) {
   const task = state.tasks.find((t) => t.id === id);
   if (!task) return;
-  task.completed = completed;
-  task.completedAt = completed ? Date.now() : null;
-  await db.put('tasks', task);
+  await markTask(task, completed);
   await commit();
 }
 
@@ -131,12 +170,7 @@ export async function setBlockStatus(id, status) {
     const task = state.tasks.find((t) => t.id === block.taskId);
     if (task) {
       const doneMin = state.blocks.filter((b) => b.taskId === task.id && b.status === 'done').reduce((s, b) => s + b.duration, 0);
-      const finished = doneMin >= task.duration - 5;
-      if (finished !== task.completed) {
-        task.completed = finished;
-        task.completedAt = finished ? Date.now() : null;
-        await db.put('tasks', task);
-      }
+      await markTask(task, doneMin >= task.duration - 5);
     }
   }
   await commit();
@@ -186,7 +220,7 @@ export async function checkIn(statuses) {
     const blocks = state.blocks.filter((b) => b.taskId === task.id);
     if (!blocks.length || task.completed) continue;
     const doneMin = blocks.filter((b) => b.status === 'done').reduce((s, b) => s + b.duration, 0);
-    if (doneMin >= task.duration - 5) { task.completed = true; task.completedAt = Date.now(); await db.put('tasks', task); }
+    if (doneMin >= task.duration - 5) await markTask(task, true);
   }
   await updateSettings({ lastCheckin: todayKey() });
 }
@@ -274,6 +308,162 @@ export async function deleteDayOff(id) {
   await commit();
 }
 
+/* ---------- Notes, topics and reviews ---------- */
+
+const norm = (s) => s.trim().toLowerCase();
+
+/** Find or create the topic for a subject + name. New topics are first reviewed tomorrow. */
+async function topicFor(subjectId, name, date) {
+  if (!name.trim()) return null;
+  let t = state.topics.find((x) => x.subjectId === subjectId && norm(x.name) === norm(name));
+  if (!t) {
+    t = { id: uid(), subjectId, name: name.trim(), step: 0, nextReview: addDays(date, REVIEW_STEPS[0]), lastRating: null, lastReviewed: null, hardCount: 0, createdAt: Date.now() };
+    state.topics.push(t);
+    await db.put('topics', t);
+  }
+  return t;
+}
+
+export async function saveNote(note) {
+  note.text = note.text.trim();
+  const oldTopic = state.notes.find((n) => n.id === note.id)?.topicId;
+  const topic = await topicFor(note.subjectId, note.topicName || '', note.date);
+  note.topicId = topic ? topic.id : null;
+  const i = state.notes.findIndex((n) => n.id === note.id);
+  if (i >= 0) state.notes[i] = note; else state.notes.push(note);
+  await db.put('notes', note);
+  if (oldTopic && oldTopic !== note.topicId) await dropEmptyTopic(oldTopic);
+  await commit();
+}
+
+export async function deleteNote(id) {
+  const note = state.notes.find((n) => n.id === id);
+  state.notes = state.notes.filter((n) => n.id !== id);
+  await db.remove('notes', id);
+  if (note?.topicId) await dropEmptyTopic(note.topicId);
+  await commit();
+  return note;
+}
+
+async function dropEmptyTopic(topicId) {
+  if (state.notes.some((n) => n.topicId === topicId)) return;
+  state.topics = state.topics.filter((t) => t.id !== topicId);
+  await db.remove('topics', topicId);
+}
+
+export async function deleteTopic(id) {
+  const notes = state.notes.filter((n) => n.topicId === id);
+  for (const n of notes) { state.notes = state.notes.filter((x) => x.id !== n.id); await db.remove('notes', n.id); }
+  state.topics = state.topics.filter((t) => t.id !== id);
+  await db.remove('topics', id);
+  await commit();
+}
+
+/** Easy / OK / Hard. OK → next step, Hard → back to 1 day, Easy → skip a step. */
+export async function rateTopic(id, rating) {
+  const t = state.topics.find((x) => x.id === id);
+  if (!t) return;
+  const today = todayKey();
+  t.step = rating === 'hard' ? 0 : Math.min(REVIEW_STEPS.length - 1, t.step + (rating === 'easy' ? 2 : 1));
+  t.nextReview = addDays(today, REVIEW_STEPS[t.step]);
+  t.lastRating = rating;
+  t.lastReviewed = today;
+  if (rating === 'hard') t.hardCount = (t.hardCount || 0) + 1;
+  await db.put('topics', t);
+  // A review block today is done once all its topics are reviewed.
+  for (const b of state.blocks) {
+    if (b.kind === 'review' && b.date === today && b.status === 'planned' && b.topicIds?.includes(id) &&
+        b.topicIds.every((tid) => { const x = state.topics.find((y) => y.id === tid); return !x || x.lastReviewed === today; })) {
+      b.status = 'done';
+    }
+  }
+  await commit();
+}
+
+/** Skip a review block: its topics move to tomorrow. */
+export async function skipReview(blockId) {
+  const b = state.blocks.find((x) => x.id === blockId);
+  if (!b) return;
+  const tomorrow = addDays(todayKey(), 1);
+  for (const id of b.topicIds || []) {
+    const t = state.topics.find((x) => x.id === id);
+    if (t && t.nextReview < tomorrow) { t.nextReview = tomorrow; await db.put('topics', t); }
+  }
+  b.status = 'missed';
+  await commit();
+}
+
+/** Flashcards from "Q: …" / "A: …" lines. */
+export function flashcards(text) {
+  const cards = [];
+  let q = null;
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\s*([QA])\s*[:.)]\s*(.*)$/i);
+    if (!m) { if (q && cards.at(-1)?.q === q && line.trim()) cards.at(-1).a += ' ' + line.trim(); continue; }
+    if (m[1].toUpperCase() === 'Q') q = m[2].trim();
+    else if (q) { cards.push({ q, a: m[2].trim() }); }
+  }
+  return cards;
+}
+
+export const topicsDue = (day = todayKey()) => state.topics.filter((t) => t.nextReview && t.nextReview <= day);
+
+/* ---------- Habits ---------- */
+
+export async function saveHabit(h) {
+  h.name = h.name.trim();
+  const i = state.habits.findIndex((x) => x.id === h.id);
+  if (i >= 0) state.habits[i] = h; else state.habits.push(h);
+  await db.put('habits', h);
+  emit();
+}
+export async function deleteHabit(id) {
+  const h = state.habits.find((x) => x.id === id);
+  state.habits = state.habits.filter((x) => x.id !== id);
+  await db.remove('habits', id);
+  emit();
+  return h;
+}
+export async function toggleHabit(id, day = todayKey()) {
+  const h = state.habits.find((x) => x.id === id);
+  if (!h) return;
+  h.done = h.done.includes(day) ? h.done.filter((d) => d !== day) : [...h.done, day];
+  await db.put('habits', h);
+  emit();
+}
+
+/* ---------- Grades ---------- */
+
+export async function addGrade(g) {
+  const grade = { id: uid(), date: todayKey(), ...g };
+  state.grades.push(grade);
+  await db.put('grades', grade);
+  emit();
+}
+export async function deleteGrade(id) {
+  state.grades = state.grades.filter((g) => g.id !== id);
+  await db.remove('grades', id);
+  emit();
+}
+
+/* ---------- Time logs (focus timer) ---------- */
+
+export async function logTime(block, minutes) {
+  if (minutes < 1) return;
+  const log = { id: uid(), blockId: block.id, date: todayKey(), minutes: Math.round(minutes), planned: block.duration,
+    kind: block.kind, subjectId: block.subjectId || null, taskId: block.taskId || null };
+  state.timeLogs.push(log);
+  await db.put('timeLogs', log);
+}
+
+/** How long tasks really take compared to the estimate (1.2 = 20% longer). Null until there's enough data. */
+export function estimateRatio() {
+  const logs = state.timeLogs.filter((l) => l.kind === 'task');
+  if (logs.length < 3) return null;
+  const planned = logs.reduce((s, l) => s + l.planned, 0);
+  return planned ? logs.reduce((s, l) => s + l.minutes, 0) / planned : null;
+}
+
 /* ---------- Settings ---------- */
 
 export async function updateSettings(patch) {
@@ -287,11 +477,12 @@ export async function updateSettings(patch) {
 export function exportData() {
   return {
     app: 'planner',
-    format: 2,
+    format: 3,
     exportedAt: new Date().toISOString(),
     data: {
       tasks: state.tasks, lists: state.lists, subjects: state.subjects,
       commitments: state.commitments, daysOff: state.daysOff, blocks: state.blocks,
+      notes: state.notes, topics: state.topics, habits: state.habits, grades: state.grades, timeLogs: state.timeLogs,
       settings: [state.settings],
     },
   };

@@ -3,6 +3,8 @@ import { esc, h, openSheet, toast } from '../ui.js';
 import * as store from '../store.js';
 import { state, SUBJECT_COLOURS } from '../store.js';
 import { todayKey, addDays, mondayOf, formatMinutes } from '../dates.js';
+import { habitsSection } from './habits.js';
+import { statsSection, gradesField } from './stats.js';
 
 export const addLabel = 'Add subject';
 export const onAdd = () => openSubjectEditor(null);
@@ -46,6 +48,7 @@ export function render(el) {
 
   if (!state.subjects.length) {
     el.append(h('<p class="empty">Add your subjects and how many hours a week each one needs. The planner spreads the sessions over your week, so no day gets crowded.</p>'));
+    el.append(habitsSection());
     return;
   }
 
@@ -88,6 +91,8 @@ export function render(el) {
     list.querySelector('ul').append(row);
   }
   el.append(list);
+  el.append(habitsSection());
+  el.append(statsSection());
 }
 
 export function openSubjectEditor(existing) {
@@ -96,6 +101,7 @@ export function openSubjectEditor(existing) {
 
   openSheet({
     title: isNew ? 'New subject' : 'Edit subject',
+    full: !isNew,
     action: 'Save',
     onAction: async (close) => {
       if (!subject.name.trim()) return;
@@ -121,7 +127,9 @@ export function openSubjectEditor(existing) {
           <span>Hard subject<span class="hint">Planned before ${esc(state.settings.hardCutoff)} when possible</span></span>
           <input type="checkbox" class="switch" ${subject.hard ? 'checked' : ''} data-hard>
         </label>
+        <div data-grades></div>
         ${isNew ? '' : `<div class="delete-row"><button type="button" class="text-button danger with-icon" data-delete>${icon('trash', 18)} Delete subject</button></div>`}`;
+      if (!isNew) body.querySelector('[data-grades]').append(gradesField(subject.id));
 
       const name = body.querySelector('.title-input');
       const sync = () => { saveBtn.disabled = !name.value.trim(); };

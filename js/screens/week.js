@@ -32,6 +32,7 @@ export function render(el) {
         <button class="text-button" data-replan>Re-spread</button>
       </div>
     </header>
+    <div data-summary></div>
     <div class="pager" tabindex="-1"></div>
     <div class="pager-dots" aria-hidden="true"></div>
     <section class="section agenda"></section>`;
@@ -42,6 +43,9 @@ export function render(el) {
     await store.respreadWeek(wk, addDays(wk, 6));
     toast(pinned ? `Re-spread ${weekRange(wk)}. ${pinned} pinned block${pinned === 1 ? '' : 's'} unpinned.` : `Re-spread ${weekRange(wk)}`);
   });
+
+  const summary = weekSummary(today);
+  if (summary) el.querySelector('[data-summary]').append(summary);
 
   const pager = el.querySelector('.pager');
   const dots = el.querySelector('.pager-dots');
@@ -135,4 +139,35 @@ function drawAgenda(sec) {
   }
   items.forEach((it) => ul.append(itemRow(it, { live: selected === todayKey() })));
   if (selected >= todayKey()) enableListDrag(ul, selected);
+}
+
+/** On Sundays: a look at the week ahead. */
+function weekSummary(today) {
+  if (fromKey(today).getDay() !== 0) return null;
+  const mon = addDays(today, 1), sun = addDays(today, 7);
+  const blocks = state.blocks.filter((b) => b.date >= mon && b.date <= sun && b.status !== 'missed');
+  const study = blocks.filter((b) => b.kind === 'study').reduce((s, b) => s + b.duration, 0);
+  const tasks = new Set(blocks.filter((b) => b.kind === 'task').map((b) => b.taskId)).size;
+  const reviews = blocks.filter((b) => b.kind === 'review').length;
+  const loads = {};
+  for (const b of blocks) loads[b.date] = (loads[b.date] || 0) + b.duration;
+  const busiest = Object.entries(loads).sort((a, b) => b[1] - a[1])[0];
+  const exams = state.tasks.filter((t) => t.type === 'exam' && !t.completed && t.deadline >= mon && t.deadline <= sun);
+  const due = state.tasks.filter((t) => t.type !== 'exam' && !t.completed && t.deadline >= mon && t.deadline <= sun);
+  const w = state.plan.weeks.find((x) => x.monday === mon);
+  return h(`
+    <section class="summary">
+      <h2>Next week, ${esc(weekRange(mon))}</h2>
+      <div class="zstats">
+        <div><strong class="num">${formatMinutes(study)}</strong><span>study</span></div>
+        <div><strong class="num">${tasks}</strong><span>task${tasks === 1 ? '' : 's'}</span></div>
+        <div><strong class="num">${reviews}</strong><span>review${reviews === 1 ? '' : 's'}</span></div>
+      </div>
+      <ul class="summary-list">
+        ${busiest ? `<li>Busiest day: ${esc(fromKey(busiest[0]).toLocaleDateString('en-GB', { weekday: 'long' }))}, <span class="num">${formatMinutes(busiest[1])}</span></li>` : ''}
+        ${exams.length ? `<li>Exams: ${exams.map((e) => `${esc(e.title)} (${esc(fromKey(e.deadline).toLocaleDateString('en-GB', { weekday: 'short' }))})`).join(', ')}</li>` : ''}
+        ${due.length ? `<li>Due: ${due.slice(0, 4).map((t) => esc(t.title)).join(', ')}${due.length > 4 ? ` and ${due.length - 4} more` : ''}</li>` : ''}
+        ${w?.overflowMinutes ? `<li class="warn">${formatMinutes(w.overflowMinutes)} doesn't fit. Add hours or move a deadline.</li>` : ''}
+      </ul>
+    </section>`);
 }

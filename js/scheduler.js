@@ -46,6 +46,7 @@ export function commitmentsOn(commitments, key) {
  */
 export function plan(data, now = new Date()) {
   const { tasks, subjects, commitments, daysOff, settings } = data;
+  const topics = data.topics || [];
   const today = todayKey();
   const nowM = currentMin(now);
   const end = horizonEnd(today);
@@ -58,6 +59,7 @@ export function plan(data, now = new Date()) {
 
   // 1. Decide which existing blocks stay.
   const kept = [];
+  const idPool = new Map();
   for (const b of data.blocks) {
     if (b.kind === 'task') {
       const t = taskById.get(b.taskId);
@@ -65,13 +67,18 @@ export function plan(data, now = new Date()) {
       if (t.completed && b.status === 'planned') continue; // finished early
     }
     if (b.kind === 'study' && !subjectById.has(b.subjectId) && b.status !== 'done') continue;
+    if (b.kind === 'review' && b.status === 'planned' && !b.topicIds?.some((id) => topics.some((t) => t.id === id))) continue;
 
     if (b.status !== 'planned') { kept.push(b); continue; }          // done / missed history
     if (b.date < today) { kept.push({ ...b, status: 'missed' }); continue; } // never checked off
     if (b.pinned) { kept.push(b); continue; }
     if (b.date === today && b.start < nowM) { kept.push(b); continue; } // already started: frozen
-    // everything else is re-planned
+    // everything else is re-planned; remember its id so the new block can keep it
+    const k = poolKey(b);
+    if (!idPool.has(k)) idPool.set(k, []);
+    idPool.get(k).push(b);
   }
+  for (const list of idPool.values()) list.sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
 
   // 2. Days, free time and load.
   const days = [];
@@ -98,6 +105,28 @@ export function plan(data, now = new Date()) {
 
   // 3. Work items.
   const items = [];
+
+  // Reviews: 15 minutes per group of up to 3 topics, on the day each topic is due
+  const REVIEW_MIN = 15, PER_BLOCK = 3;
+  const covered = new Set(kept.filter((b) => b.kind === 'review' && b.status === 'planned').flatMap((b) => b.topicIds || []));
+  const reviewDays = new Map();
+  for (const t of topics) {
+    if (!t.nextReview || covered.has(t.id)) continue;
+    const day = t.nextReview < today ? today : t.nextReview;
+    if (day > end) continue;
+    if (!reviewDays.has(day)) reviewDays.set(day, []);
+    reviewDays.get(day).push(t);
+  }
+  for (const [day, list] of reviewDays) {
+    for (let i = 0; i < list.length; i += PER_BLOCK) {
+      const ids = list.slice(i, i + PER_BLOCK).map((t) => t.id);
+      items.push({
+        kind: 'review', topicIds: ids, key: `review:${day}:${i}`, duration: REVIEW_MIN,
+        first: day, last: addDays(day, 2) > end ? end : addDays(day, 2), group: -1,
+        title: 'Review', sortDate: day, prio: 0,
+      });
+    }
+  }
 
   // Tasks (not in the inbox, not exams)
   for (const t of tasks) {
@@ -147,7 +176,7 @@ export function plan(data, now = new Date()) {
 
   // Order: exam-boosted study, deadline tasks, regular study, tasks without deadline.
   items.sort((a, b) => a.group - b.group ||
-    (a.kind === 'task' && b.kind === 'task' ? (a.sortDate.localeCompare(b.sortDate) || a.prio - b.prio) : 0));
+    (a.kind === b.kind && a.kind !== 'study' ? (a.sortDate.localeCompare(b.sortDate) || a.prio - b.prio) : 0));
   // (Array.prototype.sort is stable, so study keeps its round-robin order.)
 
   // 4. Place each item on the least busy day that still fits.
@@ -170,9 +199,11 @@ export function plan(data, now = new Date()) {
     }
     if (!best) { overflow.push(item); continue; }
     const info = dayInfo.get(best.k);
+    const reuse = idPool.get(poolKey(item))?.shift();
     const block = {
-      id: uid(), date: best.k, start: best.start, duration: item.duration,
+      id: reuse ? reuse.id : uid(), date: best.k, start: best.start, duration: item.duration,
       kind: item.kind, taskId: item.taskId || null, subjectId: item.subjectId || null,
+      topicIds: item.topicIds || null,
       pinned: false, status: 'planned',
     };
     placed.push(block);
@@ -201,8 +232,14 @@ export function plan(data, now = new Date()) {
   return { blocks: all, overflow, weeks };
 }
 
+/** Same key for an old block and the new item that replaces it. */
+function poolKey(x) {
+  if (x.kind === 'review') return 'review:' + [...(x.topicIds || [])].sort().join(',');
+  return x.kind === 'task' ? 'task:' + x.taskId : 'sub:' + x.subjectId;
+}
+
 function keyOf(b) {
-  return b.kind === 'task' ? 'task:' + b.taskId : b.kind === 'study' ? 'sub:' + b.subjectId : b.kind;
+  return b.kind === 'task' ? 'task:' + b.taskId : b.kind === 'study' ? 'sub:' + b.subjectId : b.kind + ':' + b.id;
 }
 
 /** Split minutes into pieces of `size`; a small remainder joins the last piece. */

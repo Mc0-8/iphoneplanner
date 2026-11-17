@@ -7,6 +7,8 @@ import { dayItems, itemRow, positionNowLine, enableListDrag } from '../block-ui.
 import { todayKey, longToday, formatMinutes, fromMin, toMin, nowMin, addDays as addDaysKey, shortDate } from '../dates.js';
 import { windowFor } from '../scheduler.js';
 import { openSettings } from './settings.js';
+import { runningBar } from './focus.js';
+import { habitsToday } from './habits.js';
 
 let showDone = false;
 let timer;
@@ -36,6 +38,9 @@ export function render(el) {
       </div>
     </header>`;
   el.querySelector('[data-settings]').addEventListener('click', openSettings);
+
+  const running = runningBar();
+  if (running) el.append(running);
 
   // End-of-day check-in
   const openBlocks = blocks.filter((b) => b.status === 'planned');
@@ -73,6 +78,10 @@ export function render(el) {
     loose.forEach((t) => s.querySelector('ul').append(taskRow(t)));
     el.append(s);
   }
+
+  // Habits for today
+  const habits = habitsToday();
+  if (habits) el.append(habits);
 
   // Exams coming up within a week
   const soon = state.tasks.filter((t) => t.type === 'exam' && !t.completed && t.deadline >= today && t.deadline <= addDaysKey(today, 7));

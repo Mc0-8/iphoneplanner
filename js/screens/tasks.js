@@ -3,6 +3,8 @@ import { esc, h } from '../ui.js';
 import { state, sortTasks } from '../store.js';
 import { taskRow } from '../task-ui.js';
 import { openListManager } from './lists.js';
+import { openSearch } from './search.js';
+import { searchIcon } from './notes.js';
 
 let inboxOpen = false;
 let showCompleted = false;
@@ -23,10 +25,12 @@ export function render(el) {
         <p class="meta"><span class="num">${open.length}</span> open</p>
       </div>
       <div class="header-actions">
+        <button class="icon-button" data-search aria-label="Search">${searchIcon()}</button>
         <button class="icon-button" data-lists aria-label="Manage lists">${icon('dots', 24)}</button>
       </div>
     </header>`;
   el.querySelector('[data-lists]').addEventListener('click', openListManager);
+  el.querySelector('[data-search]').addEventListener('click', openSearch);
 
   // Inbox: collapsed, with a count
   const inboxEl = h(`
