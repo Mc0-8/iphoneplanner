@@ -2,7 +2,8 @@ import { icon } from '../icons.js';
 import { esc, h, toast } from '../ui.js';
 import * as store from '../store.js';
 import { state } from '../store.js';
-import { dayItems, itemRow } from '../block-ui.js';
+import { dayItems, itemRow, enableListDrag } from '../block-ui.js';
+import { openDayView } from './day-view.js';
 import { todayKey, addDays, mondayOf, weekRange, dayTitle, formatMinutes, fromKey } from '../dates.js';
 import { windowFor, horizonEnd } from '../scheduler.js';
 
@@ -28,7 +29,7 @@ export function render(el) {
         <p class="meta" data-range></p>
       </div>
       <div class="header-actions">
-        <button class="text-button" data-replan>Re-plan</button>
+        <button class="text-button" data-replan>Re-spread</button>
       </div>
     </header>
     <div class="pager" tabindex="-1"></div>
@@ -36,8 +37,10 @@ export function render(el) {
     <section class="section agenda"></section>`;
 
   el.querySelector('[data-replan]').addEventListener('click', async () => {
-    await store.replan();
-    toast('Re-planned the next 5 weeks');
+    const wk = addDays(first, page * 7);
+    const pinned = state.blocks.filter((b) => b.pinned && b.status === 'planned' && b.date >= wk && b.date <= addDays(wk, 6) && b.date >= today).length;
+    await store.respreadWeek(wk, addDays(wk, 6));
+    toast(pinned ? `Re-spread ${weekRange(wk)}. ${pinned} pinned block${pinned === 1 ? '' : 's'} unpinned.` : `Re-spread ${weekRange(wk)}`);
   });
 
   const pager = el.querySelector('.pager');
@@ -77,6 +80,7 @@ export function render(el) {
     selected = cell.dataset.day;
     pager.querySelectorAll('[data-day]').forEach((c) => c.setAttribute('aria-pressed', c.dataset.day === selected));
     drawAgenda(el.querySelector('.agenda'));
+    if (selected >= today) openDayView(selected, cell);
   });
 
   drawAgenda(el.querySelector('.agenda'));
@@ -120,13 +124,15 @@ function drawAgenda(sec) {
   const items = dayItems(selected);
   const load = items.filter((i) => i.type === 'block').reduce((s, i) => s + (i.end - i.start), 0);
   sec.innerHTML = `
-    <div class="section-head"><h2>${esc(dayTitle(selected))}</h2><span class="count num">${load ? formatMinutes(load) : ''}</span></div>
+    <div class="section-head"><h2>${esc(dayTitle(selected))}</h2><button class="link-button open-day" type="button">Open day ${icon('caretRight', 14)}</button></div>
     <ul class="rows tlist"></ul>`;
   const ul = sec.querySelector('ul');
+  sec.querySelector(".open-day").addEventListener('click', (e) => openDayView(selected, e.currentTarget));
   if (!items.length) {
     const off = !windowFor(state.settings, state.daysOff, selected);
     ul.append(h(`<li><p class="empty">${off ? 'Day off.' : 'Nothing planned.'}</p></li>`));
     return;
   }
   items.forEach((it) => ul.append(itemRow(it, { live: selected === todayKey() })));
+  if (selected >= todayKey()) enableListDrag(ul, selected);
 }

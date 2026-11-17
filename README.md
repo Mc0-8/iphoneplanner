@@ -2,12 +2,14 @@
 
 A calm planner and to-do app for iPhone. It's a web app that you add to your home screen, and it works offline. All data stays on your phone.
 
-This build covers **phases 1 and 2** of the plan.
+This build covers **phases 1, 2 and 3** of the plan.
 
 - **Phase 1:** tasks, lists, inbox, light and dark themes, offline support, backup and restore.
 - **Phase 2:** the scheduler (spreads tasks and study evenly, splits big tasks, daily limit, fixed commitments, days off), the study planner (weekly hours per subject, exam boost, streak), the Today list with a moving "now" line, the end-of-day check-in, and a Week calendar you can swipe through 5 weeks.
 
-Drag and drop comes in phase 3, notes and reviews in phase 4.
+- **Phase 3:** hold and drag blocks to reorder them or move them to another day (they get pinned), a long-press menu (edit, pin/unpin, move to tomorrow, delete or skip), "Re-spread" for a week, swipe left to delete a task, and a zoomed day view from the Week tab.
+
+Notes and reviews come in phase 4.
 
 ## Put it on your iPhone
 
@@ -38,7 +40,8 @@ Then open http://localhost:8000.
 | `js/app.js` | Tab bar, screen switching, add button |
 | `js/store.js` | App data and saving; re-plans after every change |
 | `js/scheduler.js` | The scheduling rules (pure function, no UI) |
-| `js/block-ui.js` | Rows for the timed day list and the now line |
+| `js/block-ui.js` | Rows for the timed day list, the now line, long-press menu, drag to reorder |
+| `js/drag.js` | Long-press and drag handling (touch and mouse) |
 | `js/db.js` | IndexedDB storage |
 | `js/task-ui.js` | Task rows and the add/edit sheet |
 | `js/screens/` | One file per screen (Today, Week, Study, Tasks, Settings, schedule settings, Lists) |

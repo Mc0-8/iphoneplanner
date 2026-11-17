@@ -93,7 +93,7 @@ export function plan(data, now = new Date()) {
   }
   for (const b of kept) {
     const info = dayInfo.get(b.date);
-    if (info && b.status !== 'missed') info.keys.add(keyOf(b));
+    if (info) info.keys.add(keyOf(b));
   }
 
   // 3. Work items.
@@ -240,4 +240,17 @@ function freeMinutes([ws, we], busy) {
   let free = we - ws;
   for (const [s, e] of busy) free -= Math.max(0, Math.min(e, we) - Math.max(s, ws));
   return Math.max(0, free);
+}
+
+/** Earliest free start on a day (at or after `after`) for `dur` minutes, ignoring block `excludeId`. */
+export function freeSlot(data, key, dur, excludeId = null, after = 0) {
+  const win = windowFor(data.settings, data.daysOff, key) || [8 * 60, 21 * 60];
+  let ws = Math.max(win[0], after);
+  if (key === todayKey()) ws = Math.max(ws, ceilTo(currentMin(), ROUND));
+  if (ws + dur > win[1]) return null;
+  const busy = commitmentsOn(data.commitments, key).map((c) => [c.s, c.e]);
+  for (const b of data.blocks) {
+    if (b.date === key && b.id !== excludeId && b.status !== 'missed') busy.push([b.start, b.start + b.duration]);
+  }
+  return findSlot({ win: [ws, win[1]], busy }, dur, data.settings.breakMinutes);
 }

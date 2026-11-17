@@ -28,6 +28,7 @@ export function taskRow(task, { showList = true, hideToday = false } = {}) {
   const row = h(`
     <li class="row${task.completed ? ' done' : ''}" data-id="${task.id}">
       <div class="row-swipe-bg" aria-hidden="true">${icon('check', 18)} Done</div>
+      <div class="row-swipe-del" aria-hidden="true">Delete ${icon('trash', 18)}</div>
       <div class="row-inner">
         <button class="check" type="button" aria-label="${task.completed ? 'Mark as not done' : 'Mark as done'}"><span>${icon('check', 14)}</span></button>
         <button class="row-body" type="button">
@@ -40,8 +41,13 @@ export function taskRow(task, { showList = true, hideToday = false } = {}) {
 
   row.querySelector('.check').addEventListener('click', () => toggleDone(task, row));
   row.querySelector('.row-body').addEventListener('click', () => openTaskEditor(task));
-  if (!task.completed) enableSwipe(row, () => complete(task));
+  enableSwipe(row, task.completed ? null : () => complete(task), () => removeTask(task));
   return row;
+}
+
+export async function removeTask(task) {
+  const removed = await store.deleteTask(task.id);
+  if (removed) toast(`Deleted: ${removed.title}`, { undo: () => store.saveTask(removed) });
 }
 
 function toggleDone(task, row) {
@@ -65,6 +71,7 @@ export function openTaskEditor(existing, defaults = {}) {
   openSheet({
     title: isNew ? (task.type === 'exam' ? 'New exam' : 'New task') : 'Edit task',
     action: 'Save',
+    extra: isNew ? null : { icon: 'trash', label: 'Delete task', onClick: (close) => { close(); removeTask(existing); } },
     onAction: save,
     build(body, close, saveBtn) {
       body.innerHTML = `

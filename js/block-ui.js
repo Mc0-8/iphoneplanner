@@ -1,11 +1,12 @@
 // Rows for the timed day list (Today and the Week tab's day agenda).
 
 import { icon } from './icons.js';
-import { esc, h, toast } from './ui.js';
+import { esc, h, toast, openSheet } from './ui.js';
+import { longPress, ghost, autoScroller } from './drag.js';
 import * as store from './store.js';
 import { state } from './store.js';
-import { fromMin, formatMinutes, nowMin, todayKey } from './dates.js';
-import { commitmentsOn } from './scheduler.js';
+import { fromMin, formatMinutes, nowMin, todayKey, addDays, shortDate } from './dates.js';
+import { commitmentsOn, windowFor, horizonEnd } from './scheduler.js';
 import { openTaskEditor } from './task-ui.js';
 import { openSubjectEditor } from './screens/study.js';
 
@@ -20,7 +21,7 @@ export function dayItems(key) {
 }
 
 /** "Essay · part 2 of 6" style details for a block. */
-function describe(b) {
+export function describe(b) {
   if (b.kind === 'study') {
     const s = store.subjectById(b.subjectId);
     return { title: s ? s.name : 'Study', dot: s?.colour, kindLabel: 'Study', onOpen: s ? () => openSubjectEditor(s) : null };
@@ -53,7 +54,7 @@ export function itemRow(item, { live = false } = {}) {
   const done = b.status === 'done';
   const missed = b.status === 'missed';
   const row = h(`
-    <li class="trow${done ? ' done' : ''}${past && !done ? ' past' : ''}${missed ? ' missed' : ''}" data-start="${item.start}" data-end="${item.end}">
+    <li class="trow${done ? ' done' : ''}${past && !done ? ' past' : ''}${missed ? ' missed' : ''}" data-id="${b.id}" data-start="${item.start}" data-end="${item.end}">
       <div class="ttime num">${fromMin(item.start)}<span>${fromMin(item.end)}</span></div>
       <button class="check" type="button" aria-label="${done ? 'Mark as not done' : 'Mark as done'}"><span>${icon('check', 14)}</span></button>
       <button class="tbody" type="button">
@@ -63,6 +64,7 @@ export function itemRow(item, { live = false } = {}) {
           <span class="num">${formatMinutes(b.duration)}</span>
           ${d.kindLabel ? `<span>${esc(d.kindLabel)}</span>` : ''}
           ${missed ? '<span>Missed</span>' : ''}
+          ${b.pinned && !done ? `<span class="pinned">${icon('pin', 13)}Pinned</span>` : ''}
         </span>
       </button>
     </li>`);
@@ -96,4 +98,124 @@ export function positionNowLine(list, line) {
   }
   line.style.top = `${Math.round(top)}px`;
   rows.forEach((r) => r.classList.toggle('past', Number(r.dataset.end) <= now && !r.classList.contains('done')));
+}
+
+/* ---------- Long-press menu ---------- */
+
+export function openBlockMenu(block) {
+  const d = describe(block);
+  const isTask = block.kind === 'task';
+  const tomorrow = addDays(block.date < todayKey() ? todayKey() : block.date, 1);
+  const actions = [
+    { id: 'edit', icon: 'pencil', label: isTask ? 'Edit task' : 'Edit subject', show: !!d.onOpen },
+    { id: 'pin', icon: block.pinned ? 'unpin' : 'pin', label: block.pinned ? 'Unpin (let the planner move it)' : 'Pin to this time', show: block.status === 'planned' },
+    { id: 'tomorrow', icon: 'arrowRight', label: 'Move to tomorrow', show: block.status === 'planned' && tomorrow <= horizonEnd() },
+    { id: 'delete', icon: isTask ? 'trash' : 'skip', label: isTask ? 'Delete task' : 'Skip this session', show: true, danger: true },
+  ].filter((a) => a.show);
+
+  openSheet({
+    title: d.title,
+    build(body, close) {
+      body.innerHTML = `<p class="fineprint" style="margin-top:0">${esc(shortDate(block.date))} · ${fromMin(block.start)}–${fromMin(block.start + block.duration)} · ${formatMinutes(block.duration)}</p>
+        <div class="menu">${actions.map((a) => `<button type="button" class="menu-item${a.danger ? ' danger' : ''}" data-a="${a.id}">${icon(a.icon, 20)}<span>${esc(a.label)}</span></button>`).join('')}</div>
+        <p class="fineprint">Tip: hold and drag a block to move it.</p>`;
+      body.querySelectorAll('[data-a]').forEach((btn) => btn.addEventListener('click', async () => {
+        close();
+        const a = btn.dataset.a;
+        if (a === 'edit') d.onOpen();
+        if (a === 'pin') await store.setPinned(block.id, !block.pinned);
+        if (a === 'tomorrow') {
+          const start = await store.moveBlockToDay(block.id, tomorrow);
+          toast(`Moved to tomorrow, ${fromMin(start)}`);
+        }
+        if (a === 'delete' && isTask) {
+          const removed = await store.deleteTask(block.taskId);
+          if (removed) toast('Task deleted', { undo: () => store.saveTask(removed) });
+        }
+        if (a === 'delete' && !isTask) {
+          await store.setBlockStatus(block.id, 'missed');
+          toast('Skipped. The time is planned on another day.', { undo: () => store.setBlockStatus(block.id, 'planned') });
+        }
+      }));
+    },
+  });
+}
+
+/* ---------- Drag to reorder (and drop on a day in the Week strip) ---------- */
+
+const ceil5 = (m) => Math.ceil(m / 5) * 5;
+
+export function enableListDrag(ul, dayKey) {
+  for (const row of ul.querySelectorAll('.trow[data-id]')) {
+    const block = state.blocks.find((b) => b.id === row.dataset.id);
+    if (!block) continue;
+    if (block.status !== 'planned') {
+      longPress(row, { onMenu: () => openBlockMenu(block) });
+      continue;
+    }
+    let g, line, target = null, dayEl = null;
+    const scroll = autoScroller(window);
+
+    longPress(row, {
+      onMenu: () => openBlockMenu(block),
+      onDragStart(x, y) {
+        g = ghost(row, x, y);
+        row.classList.add('drag-src');
+        line = h('<div class="drop-line" hidden></div>');
+        ul.append(line);
+      },
+      onDragMove(x, y) {
+        g.move(x, y);
+        scroll.update(y);
+        const hit = document.elementFromPoint(x, y);
+        const day = hit?.closest('[data-day]');
+        if (dayEl && dayEl !== day) dayEl.classList.remove('drop-target');
+        dayEl = day && day.dataset.day >= todayKey() ? day : null;
+        if (dayEl) {
+          dayEl.classList.add('drop-target');
+          line.hidden = true;
+          target = { day: dayEl.dataset.day };
+          return;
+        }
+        const rows = [...ul.querySelectorAll('.trow')].filter((r) => r !== row);
+        let idx = rows.findIndex((r) => y < r.getBoundingClientRect().top + r.offsetHeight / 2);
+        if (idx < 0) idx = rows.length;
+        line.hidden = false;
+        line.style.top = `${idx < rows.length ? rows[idx].offsetTop : (rows.at(-1)?.offsetTop ?? 0) + (rows.at(-1)?.offsetHeight ?? 0)}px`;
+        target = { index: idx, rows };
+      },
+      async onDrop() {
+        cleanup();
+        if (!target) return;
+        if (target.day) {
+          if (target.day === block.date) return;
+          const start = await store.moveBlockToDay(block.id, target.day);
+          toast(`Moved to ${shortDate(target.day).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase())}, ${fromMin(start)}`);
+          return;
+        }
+        const { index, rows } = target;
+        const prev = rows[index - 1], next = rows[index];
+        const gap = state.settings.breakMinutes;
+        const win = windowFor(state.settings, state.daysOff, dayKey) || [8 * 60, 21 * 60];
+        let earliest = win[0];
+        if (dayKey === todayKey()) earliest = Math.max(earliest, ceil5(nowMin()));
+        let start;
+        if (prev) start = ceil5(Number(prev.dataset.end) + gap);
+        else if (next) start = Math.max(earliest, Math.floor((Number(next.dataset.start) - block.duration - gap) / 5) * 5);
+        else start = earliest;
+        if (start === block.start) return;
+        await store.moveBlock(block.id, dayKey, start);
+        toast(`Moved to ${fromMin(start)} and pinned`);
+      },
+      onCancel: cleanup,
+    });
+
+    function cleanup() {
+      scroll.stop();
+      g?.remove();
+      line?.remove();
+      row.classList.remove('drag-src');
+      dayEl?.classList.remove('drop-target');
+    }
+  }
 }

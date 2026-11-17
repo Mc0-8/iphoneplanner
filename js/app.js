@@ -10,6 +10,7 @@ import * as tasks from './screens/tasks.js';
 import * as week from './screens/week.js';
 import * as study from './screens/study.js';
 import { placeholder } from './screens/placeholder.js';
+import { closeDayView } from './screens/day-view.js';
 
 const TABS = [
   { id: 'today', label: 'Today', icon: 'today', screen: today },
@@ -50,7 +51,7 @@ addBtn.addEventListener('click', () => {
   else openTaskEditor(null, tab.screen.addDefaults ? tab.screen.addDefaults() : {});
 });
 
-window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); });
+window.addEventListener('hashchange', () => { closeDayView(true); window.scrollTo(0, 0); render(); });
 
 // Re-plan when the app comes back to the front (time has moved on, maybe a new day).
 document.addEventListener('visibilitychange', () => {

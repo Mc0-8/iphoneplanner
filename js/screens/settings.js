@@ -6,7 +6,7 @@ import { applyTheme } from '../theme.js';
 import { todayKey, formatMinutes } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 
-export const VERSION = '0.2.0 · phase 2';
+export const VERSION = '0.3.0 · phase 3';
 
 export function openSettings() {
   openSheet({

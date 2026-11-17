@@ -3,7 +3,7 @@ import { esc, h, openSheet, toast } from '../ui.js';
 import * as store from '../store.js';
 import { state, sortTasks } from '../store.js';
 import { taskRow } from '../task-ui.js';
-import { dayItems, itemRow, positionNowLine } from '../block-ui.js';
+import { dayItems, itemRow, positionNowLine, enableListDrag } from '../block-ui.js';
 import { todayKey, longToday, formatMinutes, fromMin, toMin, nowMin, addDays as addDaysKey, shortDate } from '../dates.js';
 import { windowFor } from '../scheduler.js';
 import { openSettings } from './settings.js';
@@ -51,6 +51,7 @@ export function render(el) {
     const ul = wrap.querySelector('ul');
     items.forEach((it) => ul.append(itemRow(it, { live: true })));
     el.append(wrap);
+    enableListDrag(ul, today);
     const line = wrap.querySelector('.now-line');
     requestAnimationFrame(() => positionNowLine(ul, line));
     clearInterval(timer);

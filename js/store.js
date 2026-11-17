@@ -3,7 +3,7 @@
 
 import * as db from './db.js';
 import { todayKey } from './dates.js';
-import { plan } from './scheduler.js';
+import { plan, freeSlot, windowFor } from './scheduler.js';
 
 export const SUBJECT_COLOURS = ['#6B8F71', '#4F6D8F', '#C29A3B', '#8A5A7A', '#3F8A8A', '#7A7368'];
 
@@ -138,6 +138,40 @@ export async function setBlockStatus(id, status) {
         await db.put('tasks', task);
       }
     }
+  }
+  await commit();
+}
+
+/** Move a block by hand: it gets pinned there, so the planner works around it. */
+export async function moveBlock(id, date, start) {
+  const b = state.blocks.find((x) => x.id === id);
+  if (!b) return;
+  Object.assign(b, { date, start: Math.max(0, Math.min(1440 - b.duration, Math.round(start / 5) * 5)), pinned: true, status: 'planned' });
+  await commit();
+}
+
+/** Move to another day: first free time at or after the same time, else the first free time that day. */
+export async function moveBlockToDay(id, date) {
+  const b = state.blocks.find((x) => x.id === id);
+  if (!b) return null;
+  const start = freeSlot(state, date, b.duration, id, b.start) ?? freeSlot(state, date, b.duration, id)
+    ?? (windowFor(state.settings, state.daysOff, date) || [b.start])[0];
+  await moveBlock(id, date, start);
+  return start;
+}
+
+export async function setPinned(id, pinned) {
+  const b = state.blocks.find((x) => x.id === id);
+  if (!b) return;
+  b.pinned = pinned;
+  await commit();
+}
+
+/** Unpin everything still to come in a week, so the planner can spread it again. */
+export async function respreadWeek(monday, sunday) {
+  const today = todayKey();
+  for (const b of state.blocks) {
+    if (b.status === 'planned' && b.date >= monday && b.date <= sunday && b.date >= today) b.pinned = false;
   }
   await commit();
 }

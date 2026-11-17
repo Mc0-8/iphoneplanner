@@ -18,7 +18,7 @@ let openSheetCount = 0;
  * Opens a bottom sheet. `build(body, close)` fills the body.
  * Returns a close function.
  */
-export function openSheet({ title, action, onAction, full = false, build, onClose }) {
+export function openSheet({ title, action, onAction, full = false, build, onClose, extra }) {
   const layer = document.getElementById('sheet-layer');
   const scrim = h('<div class="scrim"></div>');
   const sheet = h(`
@@ -26,6 +26,7 @@ export function openSheet({ title, action, onAction, full = false, build, onClos
       <div class="sheet-bar">
         <h2>${esc(title)}</h2>
         <div>
+          ${extra ? `<button class="icon-button" data-extra aria-label="${esc(extra.label)}">${icon(extra.icon, 22)}</button>` : ''}
           ${action ? `<button class="text-button primary" data-act>${esc(action)}</button>` : ''}
           <button class="icon-button" data-close aria-label="Close">${icon('x')}</button>
         </div>
@@ -53,6 +54,7 @@ export function openSheet({ title, action, onAction, full = false, build, onClos
 
   scrim.addEventListener('click', close);
   sheet.querySelector('[data-close]').addEventListener('click', close);
+  sheet.querySelector('[data-extra]')?.addEventListener('click', () => extra.onClick(close));
   const actBtn = sheet.querySelector('[data-act]');
   if (actBtn) actBtn.addEventListener('click', () => onAction?.(close));
 
@@ -97,9 +99,9 @@ export function toast(message, { undo } = {}) {
   toastTimer = setTimeout(() => { el.hidden = true; }, undo ? 5000 : 2600);
 }
 
-/* ---------- Swipe right to complete ---------- */
+/* ---------- Swipe right to complete, swipe left to delete ---------- */
 
-export function enableSwipe(row, onComplete) {
+export function enableSwipe(row, onComplete, onDelete) {
   const inner = row.querySelector('.row-inner');
   let startX = 0, startY = 0, dx = 0, tracking = false, decided = false;
   const THRESHOLD = 96;
@@ -117,10 +119,12 @@ export function enableSwipe(row, onComplete) {
     if (!decided) {
       if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
       decided = true;
-      if (Math.abs(my) > Math.abs(mx) || mx < 0) { tracking = false; return; }
+      if (Math.abs(my) > Math.abs(mx) || (mx > 0 && !onComplete) || (mx < 0 && !onDelete)) { tracking = false; return; }
       inner.classList.add('dragging');
     }
-    dx = Math.max(0, mx);
+    dx = onComplete ? mx : Math.min(0, mx);
+    if (!onDelete) dx = Math.max(0, dx);
+    row.classList.toggle('swipe-left', dx < 0);
     inner.style.transform = `translateX(${dx}px)`;
   }, { passive: true });
 
@@ -128,9 +132,12 @@ export function enableSwipe(row, onComplete) {
     if (!tracking) return;
     tracking = false;
     inner.classList.remove('dragging');
-    if (dx > THRESHOLD) {
+    if (dx > THRESHOLD && onComplete) {
       inner.style.transform = 'translateX(100%)';
       setTimeout(onComplete, 160);
+    } else if (dx < -THRESHOLD && onDelete) {
+      inner.style.transform = 'translateX(-100%)';
+      setTimeout(onDelete, 160);
     } else {
       inner.style.transform = '';
     }
