@@ -15,6 +15,7 @@ This build covers **all four phases** of the plan.
 - **0.8:** deadlines and exams go into the Calendar export as all-day events with a reminder (that day, 1 or 2 days, or a week before), an "won't fit" warning when a task needs more time than is free before its deadline (banner on Today, tag on the task, heads-up on save), fill-in-the-blank flashcards (`C: The capital of France is {Paris}`), and a quiz mode (type the answer or multiple choice) whose score suggests the review rating.
 - **0.9:** a fresh look: rounded cards with soft shadows, each subject's colour washed across its timetable blocks, exams, notes and topics, a frosted tab bar with the current tab highlighted, pill-shaped buttons and chips, settings and edit sheets grouped into cards, and a deeper dark mode.
 - **0.10:** a bit of life: screens fade in when you switch tabs, buttons and tabs spring when tapped, the tick circle pops when you finish something, and confetti for big moments (an exam ticked off, a review session done, or everything planned for today finished). Phones set to "Reduce motion" get none of it.
+- **0.10.1:** the red "now" line on Today no longer runs into the last block or the text below it once everything planned for the day is over (e.g. after 21:00).
 
 ## How the planner works
 

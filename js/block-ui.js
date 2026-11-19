@@ -123,7 +123,9 @@ export function positionNowLine(list, line) {
     top = current.offsetTop + ((now - s) / (e - s)) * current.offsetHeight;
   } else {
     const next = rows.find((r) => Number(r.dataset.start) > now);
-    top = next ? next.offsetTop : rows[rows.length - 1].offsetTop + rows[rows.length - 1].offsetHeight;
+    const last = rows[rows.length - 1];
+    // After everything: sit below the last card (in the timeline's bottom padding), not on its edge.
+    top = next ? next.offsetTop : last.offsetTop + last.offsetHeight + 12;
   }
   line.style.top = `${Math.round(top)}px`;
   rows.forEach((r) => r.classList.toggle('past', Number(r.dataset.end) <= now && !r.classList.contains('done')));

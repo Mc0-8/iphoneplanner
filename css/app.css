@@ -1114,6 +1114,7 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; paddi
 .trow.habit-row { background: transparent; box-shadow: inset 0 0 0 1px var(--card-edge); }
 .trow.done, .trow.past { box-shadow: none; }
 .now-line { margin-top: -4px; }
+.timeline { padding-bottom: 20px; }
 .now-label { border-radius: 999px; padding: 1px 8px; }
 
 /* Cards for Notes topic groups */
