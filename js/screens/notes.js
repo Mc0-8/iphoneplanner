@@ -5,6 +5,11 @@ import { state, flashcards, topicsDue } from '../store.js';
 import { todayKey, shortDate } from '../dates.js';
 import { openReview } from './review.js';
 import { openSearch } from './search.js';
+import { openTaskEditor } from '../task-ui.js';
+import {
+  splitCards, joinCards, renderNote, renderInline, plainText, toggleTodo,
+  wrapSelection, toggleLinePrefix, insertAtCursor, taskLink,
+} from '../notes-format.js';
 
 export const addLabel = 'Add note';
 export const onAdd = () => openNoteEditor(null);
@@ -103,7 +108,7 @@ export function searchIcon() {
 function noteRow(n) {
   const subject = store.subjectById(n.subjectId);
   const topic = state.topics.find((t) => t.id === n.topicId);
-  const first = n.text.split('\n')[0];
+  const first = plainText(splitCards(n.text).body || n.text).split('\n').find((l) => l.trim()) || '';
   const row = h(`
     <li class="row"><div class="row-inner">
       <button class="row-body" type="button">
@@ -132,11 +137,7 @@ export function openTopic(id) {
           <button class="text-button primary with-icon" data-add>${icon('plus', 18)} Add note to this topic</button>
           <div class="delete-row"><button class="text-button danger with-icon" data-del>${icon('trash', 18)} Delete topic and its notes</button></div>`;
         const ul = body.querySelector('ul');
-        for (const n of notes) {
-          const li = h(`<li class="note-full"><button type="button"><span class="num muted">${esc(shortDate(n.date))}</span><span class="nt">${esc(n.text).replace(/\n/g, '<br>')}</span></button></li>`);
-          li.querySelector('button').addEventListener('click', () => openNoteEditor(n));
-          ul.append(li);
-        }
+        for (const n of notes) ul.append(noteFull(n));
         body.querySelector('[data-review]').addEventListener('click', () => { close(); openReview([t.id]); });
         body.querySelector('[data-add]').addEventListener('click', () => openNoteEditor(null, { subjectId: t.subjectId, topicName: t.name }));
         body.querySelector('[data-del]').addEventListener('click', async () => {
@@ -152,6 +153,65 @@ export function openTopic(id) {
   });
 }
 
+
+/* ---------- Formatted notes ---------- */
+
+const fmt = { taskById: (id) => state.tasks.find((t) => t.id === id) };
+
+/** Formatted body HTML for a note's text (cards left out). */
+export function noteBodyHTML(text) {
+  return renderNote(text, fmt);
+}
+
+/**
+ * Makes the links and checklist boxes inside rendered note HTML work.
+ * `onTick(line)` is called with the line number of a tapped checklist box.
+ */
+export function wireNoteBody(el, onTick) {
+  el.addEventListener('click', (e) => {
+    const link = e.target.closest('[data-task]');
+    if (link) {
+      e.stopImmediatePropagation();
+      const task = state.tasks.find((t) => t.id === link.dataset.task);
+      if (task) openTaskEditor(task); else toast('That task was deleted.');
+      return;
+    }
+    const box = e.target.closest('[data-line]');
+    if (box && onTick) { e.stopImmediatePropagation(); onTick(Number(box.dataset.line)); return; }
+    if (e.target.closest('a, .task-link')) e.stopImmediatePropagation();
+  });
+}
+
+/** A note in the topic view: formatted text and its cards. Tap to edit. */
+function noteFull(n) {
+  const { body, cards } = splitCards(n.text);
+  const li = h(`
+    <li class="note-full" role="button" tabindex="0">
+      <span class="num muted">${esc(shortDate(n.date))}</span>
+      <div class="note-body">${noteBodyHTML(body)}</div>
+      ${cards.length ? `<ul class="note-cards-mini">${cards.map((c) => `
+        <li><span class="q">${renderInline(c.q, fmt)}</span><span class="a">${c.a ? renderInline(c.a, fmt) : '<span class="muted">No answer yet</span>'}</span></li>`).join('')}</ul>` : ''}
+    </li>`);
+  const topicName = state.topics.find((t) => t.id === n.topicId)?.name || '';
+  // Ticking saves the note in the same shape the editor does (cards together at the end).
+  wireNoteBody(li, (line) => store.saveNote({ ...n, text: joinCards(toggleTodo(body, line), cards), topicName }));
+  const open = () => openNoteEditor(n);
+  li.addEventListener('click', open);
+  li.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === li) open(); });
+  return li;
+}
+
+/* ---------- Editor ---------- */
+
+const TOOLS = [
+  { wrap: '**', label: 'Bold', html: '<strong>B</strong>' },
+  { wrap: '*', label: 'Italic', html: '<em>I</em>' },
+  { wrap: '==', label: 'Highlight', html: '<mark>ab</mark>' },
+  { line: 'heading', label: 'Heading', html: '<strong>H</strong>' },
+  { line: 'bullet', label: 'Bullet list', html: icon('list', 20) },
+  { line: 'todo', label: 'Checklist', html: '<span class="tool-box"></span>' },
+];
+
 export function openNoteEditor(existing, defaults = {}) {
   const isNew = !existing;
   const topic = existing && state.topics.find((t) => t.id === existing.topicId);
@@ -159,6 +219,10 @@ export function openNoteEditor(existing, defaults = {}) {
     ? { id: store.uid(), date: todayKey(), text: '', subjectId: defaults.subjectId ?? state.settings.lastNoteSubject ?? null, topicName: defaults.topicName || '', topicId: null, createdAt: Date.now() }
     : { ...existing, topicName: topic?.name || '' };
   if (note.subjectId && !store.subjectById(note.subjectId)) note.subjectId = null;
+  const split = splitCards(note.text);
+  let bodyText = split.body;
+  const cards = split.cards.map((c) => ({ ...c }));
+  const compose = () => { note.text = joinCards(bodyText, cards); };
 
   openSheet({
     title: isNew ? 'New note' : 'Edit note',
@@ -170,6 +234,7 @@ export function openNoteEditor(existing, defaults = {}) {
       toast('Note deleted', { undo: () => store.saveNote({ ...removed, topicName: topic?.name || '' }) });
     } },
     onAction: async (close) => {
+      compose();
       if (!note.text.trim()) return;
       await store.saveNote(note);
       if (note.subjectId) store.updateSettings({ lastNoteSubject: note.subjectId });
@@ -190,7 +255,19 @@ export function openNoteEditor(existing, defaults = {}) {
           <input id="topic" class="input" list="topic-list" placeholder="e.g. Mitosis" value="${esc(note.topicName)}" autocomplete="off">
           <datalist id="topic-list"></datalist>
         </div>
-        <textarea class="note-input" placeholder="What did you learn?&#10;&#10;Tip: write Q: question and A: answer on two lines to make a flashcard.">${esc(note.text)}</textarea>`;
+        <div class="note-tools" role="toolbar" aria-label="Formatting">
+          ${TOOLS.map((t, i) => `<button type="button" class="tool" data-tool="${i}" aria-label="${t.label}" title="${t.label}">${t.html}</button>`).join('')}
+          <button type="button" class="tool tool-text" data-link aria-label="Link a task">${icon('tasks', 18)} Task</button>
+          <button type="button" class="tool tool-text tool-preview" data-preview aria-pressed="false" aria-label="Preview">View</button>
+        </div>
+        <textarea class="note-input" placeholder="What did you learn?" aria-label="Note">${esc(bodyText)}</textarea>
+        <div class="note-preview note-body" hidden></div>
+        <div class="field note-cards">
+          <span class="label">Flashcards<span class="hint">Asked in your reviews: question first, tap to see the answer</span></span>
+          <ol class="card-edits"></ol>
+          <button type="button" class="text-button primary with-icon" data-add-card>${icon('plus', 18)} Add card</button>
+        </div>`;
+
       const list = body.querySelector('#topic-list');
       const fillTopics = () => {
         list.innerHTML = state.topics.filter((t) => t.subjectId === note.subjectId).map((t) => `<option value="${esc(t.name)}">`).join('');
@@ -202,11 +279,127 @@ export function openNoteEditor(existing, defaults = {}) {
         fillTopics();
       }));
       body.querySelector('#topic').addEventListener('input', (e) => { note.topicName = e.target.value; });
+
       const ta = body.querySelector('.note-input');
-      const sync = () => { saveBtn.disabled = !note.text.trim(); };
-      ta.addEventListener('input', () => { note.text = ta.value; sync(); });
+      const preview = body.querySelector('.note-preview');
+      const previewBtn = body.querySelector('[data-preview]');
+      const sync = () => { compose(); saveBtn.disabled = !note.text.trim(); };
+      const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.max(ta.scrollHeight, 180) + 'px'; };
+      ta.addEventListener('input', () => { bodyText = ta.value; grow(); sync(); });
+
+      // Formatting buttons keep the keyboard up: don't let a tap take focus from the note.
+      const tools = body.querySelector('.note-tools');
+      tools.addEventListener('pointerdown', (e) => { if (e.target.closest('[data-tool]')) e.preventDefault(); });
+      tools.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => {
+        if (!preview.hidden) setPreview(false);
+        const t = TOOLS[b.dataset.tool];
+        if (t.wrap) wrapSelection(ta, t.wrap); else toggleLinePrefix(ta, t.line);
+        ta.focus();
+      }));
+
+      const drawPreview = () => {
+        preview.innerHTML = bodyText.trim() ? noteBodyHTML(bodyText) : '<p class="empty">Nothing written yet.</p>';
+      };
+      const setPreview = (on) => {
+        previewBtn.setAttribute('aria-pressed', on);
+        preview.hidden = !on;
+        ta.hidden = on;
+        if (on) drawPreview(); else grow();
+      };
+      previewBtn.addEventListener('click', () => setPreview(preview.hidden));
+      wireNoteBody(preview, (line) => {
+        bodyText = toggleTodo(bodyText, line);
+        ta.value = bodyText;
+        sync();
+        drawPreview();
+      });
+
+      body.querySelector('[data-link]').addEventListener('click', () => pickTask((task) => {
+        setPreview(false);
+        ta.focus();
+        insertAtCursor(ta, taskLink(task));
+      }));
+
+      // Card editor
+      const cardList = body.querySelector('.card-edits');
+      const growField = (el) => { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; };
+      const drawCards = (focus) => {
+        cardList.innerHTML = cards.map((c, i) => `
+          <li class="card-edit" data-i="${i}">
+            <div class="card-edit-fields">
+              <textarea class="card-field q" rows="1" data-k="q" placeholder="Question" aria-label="Question ${i + 1}" enterkeyhint="next">${esc(c.q)}</textarea>
+              <textarea class="card-field a" rows="1" data-k="a" placeholder="Answer" aria-label="Answer ${i + 1}" enterkeyhint="next">${esc(c.a)}</textarea>
+            </div>
+            <button type="button" class="icon-button" data-rm aria-label="Remove card ${i + 1}">${icon('x', 16)}</button>
+          </li>`).join('');
+        cardList.querySelectorAll('.card-field').forEach(growField);
+        if (focus) cardList.querySelector(`[data-i="${focus.i}"] [data-k="${focus.k}"]`)?.focus();
+      };
+      const addCard = () => { cards.push({ q: '', a: '' }); drawCards({ i: cards.length - 1, k: 'q' }); };
+      cardList.addEventListener('input', (e) => {
+        const f = e.target.closest('.card-field');
+        if (!f) return;
+        if (f.value.includes('\n')) f.value = f.value.replace(/\s*\n\s*/g, ' '); // pasted line breaks
+        cards[f.closest('[data-i]').dataset.i][f.dataset.k] = f.value;
+        growField(f);
+        sync();
+      });
+      cardList.addEventListener('keydown', (e) => {
+        const f = e.target.closest('.card-field');
+        if (!f || e.key !== 'Enter') return;
+        e.preventDefault();
+        const i = Number(f.closest('[data-i]').dataset.i);
+        if (f.dataset.k === 'q') cardList.querySelector(`[data-i="${i}"] [data-k="a"]`).focus();
+        else if (i === cards.length - 1) { if (cards[i].q.trim() || cards[i].a.trim()) addCard(); }
+        else cardList.querySelector(`[data-i="${i + 1}"] [data-k="q"]`).focus();
+      });
+      cardList.addEventListener('click', (e) => {
+        const rm = e.target.closest('[data-rm]');
+        if (!rm) return;
+        cards.splice(Number(rm.closest('[data-i]').dataset.i), 1);
+        drawCards();
+        sync();
+      });
+      body.querySelector('[data-add-card]').addEventListener('click', addCard);
+
+      drawCards();
+      requestAnimationFrame(grow);
       sync();
       if (isNew) setTimeout(() => ta.focus(), 60);
+    },
+  });
+}
+
+/** A sheet for choosing a task to link. Open tasks first; search finds done ones too. */
+function pickTask(onPick) {
+  openSheet({
+    title: 'Link a task',
+    full: true,
+    build(body, close) {
+      body.innerHTML = `
+        <input class="input" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off" enterkeyhint="search">
+        <ul class="rows pick-tasks" style="margin-top:12px"></ul>`;
+      const input = body.querySelector('input');
+      const ul = body.querySelector('ul');
+      const draw = () => {
+        const q = input.value.trim().toLowerCase();
+        const tasks = state.tasks
+          .filter((t) => (q ? t.title.toLowerCase().includes(q) : !t.completed))
+          .sort((a, b) => a.completed - b.completed || (a.deadline || '9999').localeCompare(b.deadline || '9999'))
+          .slice(0, 60);
+        ul.innerHTML = '';
+        if (!tasks.length) { ul.append(h(`<li class="empty">${q ? 'No tasks match.' : 'No open tasks. Search to find done ones.'}</li>`)); return; }
+        for (const t of tasks) {
+          const row = h(`<li class="row${t.completed ? ' done' : ''}"><div class="row-inner"><button class="row-body" type="button">
+            <span class="title">${esc(t.title)}</span>
+            <span class="sub">${t.completed ? '<span>Done</span>' : t.deadline ? `<span>${t.dateMode === 'on' ? 'On' : 'Due'} ${esc(shortDate(t.deadline))}</span>` : '<span>No date</span>'}</span>
+          </button></div></li>`);
+          row.querySelector('button').addEventListener('click', () => { close(); onPick(t); });
+          ul.append(row);
+        }
+      };
+      input.addEventListener('input', draw);
+      draw();
     },
   });
 }

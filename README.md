@@ -11,6 +11,7 @@ This build covers **all four phases** of the plan.
 - **Phase 4:** notes with topics and Q:/A: flashcards, spaced-repetition reviews (1, 3, 7, 14, 30 days) planned as 15-minute blocks, focus mode with a timer and optional Pomodoro, planned vs actual time, habits, grades with a "what do I need" calculator, stats, search, repeating tasks, and a Sunday summary of the week ahead.
 - **0.6:** "Due by" vs "On the day" dates (gym, practice: exactly that day, optional set time), steps inside a task, quick add by typing ("essay fri 2h #school !"), "I have some time" suggestions (⚡ on Today), add blocks or a week to Calendar (.ics with alerts), "Busy until…" and drag-to-resize in the zoomed day, pausing study (per subject or all), holiday date ranges, and a number on the app icon.
 - **0.6.1:** backup reminders on Today (weekly by default, Settings → Backup reminder) and a safer restore that checks the file and shows what's in it before replacing anything.
+- **0.7:** formatted notes (bold, italic, highlight, headings, lists, checklists you can tick, tappable web links) with a formatting bar and a View preview, links from a note to a task (the task shows its linked notes), and a flashcard editor with a question and answer box per card. Notes are still saved as plain text with Q:/A: lines, so old notes and backups keep working.
 
 ## How the planner works
 
@@ -52,7 +53,8 @@ Then open http://localhost:8000.
 | `js/scheduler.js` | The scheduling rules (pure function, no UI) |
 | `js/block-ui.js` | Rows for the timed day list, the now line, long-press menu, drag to reorder |
 | `js/drag.js` | Long-press and drag handling (touch and mouse) |
-| `js/screens/notes.js`, `review.js` | Notes tab, topics, the review flow |
+| `js/screens/notes.js`, `review.js` | Notes tab, note editor and card editor, topics, the review flow |
+| `js/notes-format.js` | Note formatting, task links and splitting a note into text and flashcards |
 | `js/screens/focus.js` | Focus mode and timer |
 | `js/screens/habits.js`, `stats.js` | Habits, stats and grades |
 | `js/screens/search.js` | Search across notes and tasks |
