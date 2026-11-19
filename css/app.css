@@ -1377,3 +1377,18 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; paddi
 .box-name { font-weight: 600; font-size: 14px; }
 .box-what { font-size: 12px; color: var(--text-2); }
 .row .sub .boxbar { align-self: center; }
+
+/* Fixes from the layout check (0.11.1) */
+.progress-top > span:first-child { min-width: 0; }
+.progress-top .num { white-space: nowrap; flex: none; }
+.segmented.fill { display: grid; grid-auto-columns: 1fr; width: 100%; }
+.segmented.fill button { padding: 0 4px; white-space: nowrap; }
+.zblock .zt .ztt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.zblock.short { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+.zblock.short .zt { flex: 1 1 auto; min-width: 0; }
+.zblock.short .zs { flex: none; font-size: 12px; }
+.zblock.short .zresize { height: 10px; }
+.zblock.short .zresize::after { bottom: 2px; }
+.zgrid .now-label { right: auto; left: -50px; top: -10px; }
+.zgrid .now-line::after { left: -4px; }
+.zhour.near-now span { visibility: hidden; }

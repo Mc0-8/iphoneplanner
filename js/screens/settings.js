@@ -7,7 +7,7 @@ import { todayKey, formatMinutes, shortDate } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 import { badgeSupported, enableBadge, updateBadge } from '../badge.js';
 
-export const VERSION = '0.11.0';
+export const VERSION = '0.11.1';
 
 export function openSettings() {
   openSheet({
@@ -135,7 +135,7 @@ export function openSettings() {
       const hints = () => {
         const on = WEEK.filter(([wd]) => state.settings.availability[wd].on);
         const wk = state.settings.availability[1], we = state.settings.availability[6];
-        body.querySelector('[data-hint="availability"]').textContent = `${on.length} days · weekdays ${wk.on ? `${wk.start}–${wk.end}` : 'off'}, Sat ${we.on ? `${we.start}–${we.end}` : 'off'}`;
+        body.querySelector('[data-hint="availability"]').textContent = `${on.length} days · weekdays ${wk.on ? `${wk.start}\u2060–\u2060${wk.end}` : 'off'}, Sat ${we.on ? `${we.start}\u2060–\u2060${we.end}` : 'off'}`;
         const active = state.commitments.filter((c) => !c.date || c.date >= todayKey());
         const n = active.length;
         body.querySelector('[data-hint="commitments"]').textContent = n ? `${n} set: ${[...new Set(active.map((c) => c.name))].slice(0, 3).join(', ')}` : 'School, sport, work shifts…';
