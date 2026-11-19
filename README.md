@@ -10,6 +10,7 @@ This build covers **all four phases** of the plan.
 - **Phase 3:** hold and drag blocks to reorder them or move them to another day (they get pinned), a long-press menu (edit, pin/unpin, move to tomorrow, delete or skip), "Re-spread" for a week, swipe left to delete a task, and a zoomed day view from the Week tab.
 - **Phase 4:** notes with topics and Q:/A: flashcards, spaced-repetition reviews (1, 3, 7, 14, 30 days) planned as 15-minute blocks, focus mode with a timer and optional Pomodoro, planned vs actual time, habits, grades with a "what do I need" calculator, stats, search, repeating tasks, and a Sunday summary of the week ahead.
 - **0.6:** "Due by" vs "On the day" dates (gym, practice: exactly that day, optional set time), steps inside a task, quick add by typing ("essay fri 2h #school !"), "I have some time" suggestions (⚡ on Today), add blocks or a week to Calendar (.ics with alerts), "Busy until…" and drag-to-resize in the zoomed day, pausing study (per subject or all), holiday date ranges, and a number on the app icon.
+- **0.6.1:** backup reminders on Today (weekly by default, Settings → Backup reminder) and a safer restore that checks the file and shows what's in it before replacing anything.
 
 ## How the planner works
 

@@ -502,6 +502,13 @@ button { background: none; border: 0; padding: 0; cursor: pointer; touch-action:
 .checkin > .icon:first-child { color: var(--accent); }
 .checkin span { flex: 1; }
 .checkin strong { font-weight: 600; margin-right: 6px; }
+.backup-nudge { padding: 0 0 0 12px; gap: 4px; }
+.backup-nudge .nudge-main {
+  flex: 1; display: flex; align-items: center; gap: 12px;
+  min-height: 54px; text-align: left; color: var(--text); font-size: 15px;
+}
+.backup-nudge .nudge-main > .icon { color: var(--accent); flex: none; }
+.backup-nudge .icon-button { color: var(--text-2); }
 .checkin-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 0; border-bottom: 1px solid var(--divider);

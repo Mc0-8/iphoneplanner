@@ -3,11 +3,11 @@ import { esc, openSheet, toast, confirmSheet } from '../ui.js';
 import * as store from '../store.js';
 import { state } from '../store.js';
 import { applyTheme } from '../theme.js';
-import { todayKey, formatMinutes } from '../dates.js';
+import { todayKey, formatMinutes, shortDate } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 import { badgeSupported, enableBadge, updateBadge } from '../badge.js';
 
-export const VERSION = '0.6.0';
+export const VERSION = '0.6.1';
 
 export function openSettings() {
   openSheet({
@@ -86,6 +86,12 @@ export function openSettings() {
           <button class="setting" data-restore>
             <span>Restore<span class="hint">Replace everything with a backup file</span></span>${icon('upload', 22)}
           </button>
+          <label class="setting" for="backup-every">
+            <span>Backup reminder<span class="hint" data-hint="backup"></span></span>
+            <select id="backup-every" class="select" style="width:auto">
+              ${[[0, 'Off'], [7, 'Weekly'], [14, 'Every 2 weeks'], [30, 'Monthly']].map(([v, l]) => `<option value="${v}" ${(state.settings.backupEvery || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>
           <input type="file" accept="application/json,.json" hidden data-file>
           <p class="fineprint">Your data is stored only on this phone. Back up now and then, so nothing is lost if Safari's data is cleared or you change phones.</p>
         </section>
@@ -121,6 +127,7 @@ export function openSettings() {
         await store.updateSettings({ badge: e.target.checked });
         updateBadge();
       });
+      body.querySelector('#backup-every').addEventListener('change', (e) => store.updateSettings({ backupEvery: Number(e.target.value), backupSnoozedUntil: null }));
       body.querySelector('#session-length').addEventListener('change', (e) => store.updateSettings({ sessionLength: Number(e.target.value) }));
       body.querySelector('#cutoff').addEventListener('change', (e) => { if (e.target.value) store.updateSettings({ hardCutoff: e.target.value }); });
       const opens = { availability: openAvailability, commitments: openCommitments, daysoff: openDaysOff };
@@ -134,6 +141,8 @@ export function openSettings() {
         body.querySelector('[data-hint="commitments"]').textContent = n ? `${n} set: ${[...new Set(active.map((c) => c.name))].slice(0, 3).join(', ')}` : 'School, sport, work shifts…';
         const off = state.daysOff.filter((d) => d.weekday !== null && d.weekday !== undefined).length + state.daysOff.filter((d) => (d.date && d.date >= todayKey()) || (d.to && d.to >= todayKey())).length;
         body.querySelector('[data-hint="daysoff"]').textContent = off ? `${off} set` : 'Holidays, sick days, a rest day';
+        const last = state.settings.lastBackup;
+        body.querySelector('[data-hint="backup"]').textContent = last ? `Last backup: ${shortDate(last)}` : 'You haven\'t backed up yet';
       };
       hints();
       const unsub = store.subscribe(hints);
@@ -155,33 +164,46 @@ export function openSettings() {
         const f = file.files[0];
         file.value = '';
         if (!f) return;
+        let checked;
         try {
-          const json = JSON.parse(await f.text());
-          const n = Array.isArray(json?.data?.tasks) ? json.data.tasks.length : 0;
-          const ok = await confirmSheet({ title: 'Restore backup?', message: `This replaces everything in the app with the backup (${n} task${n === 1 ? '' : 's'}). It can't be undone.`, confirm: 'Restore' });
-          if (!ok) return;
-          await store.importData(json);
+          checked = store.validateBackup(JSON.parse(await f.text()));
+        } catch (err) {
+          toast(err instanceof store.BackupError ? err.message : 'That file could not be read. Is it a Planner backup?');
+          return;
+        }
+        const when = checked.exportedAt ? ` from ${checked.exportedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+        const ok = await confirmSheet({
+          title: 'Restore backup?',
+          message: `The backup${when} has ${checked.summary}. Everything now in the app is replaced by it, and that can't be undone. If you're not sure, back up first.`,
+          confirm: 'Restore',
+        });
+        if (!ok) return;
+        try {
+          await store.importData({ app: 'planner', format: store.BACKUP_FORMAT, data: checked.data });
           applyTheme(state.settings.theme);
           toast('Backup restored');
         } catch (err) {
-          toast(err.message.includes('Planner') ? err.message : 'That file could not be read.');
+          toast(err instanceof store.BackupError ? err.message : 'Restoring failed. Your data may not have changed; check before trying again.');
         }
       });
     },
   });
 }
 
-async function backup() {
+/** Save all data as a file (share sheet on iPhone, download elsewhere). Resolves true if it was saved. */
+export async function backup() {
   const name = `planner-backup-${todayKey()}.json`;
   const blob = new Blob([JSON.stringify(store.exportData(), null, 2)], { type: 'application/json' });
   const file = new File([blob], name, { type: 'application/json' });
   try {
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({ files: [file], title: 'Planner backup' });
-      return;
+      await store.markBackedUp();
+      toast('Backup saved');
+      return true;
     }
   } catch (err) {
-    if (err.name === 'AbortError') return;
+    if (err.name === 'AbortError') return false;
   }
   const url = URL.createObjectURL(blob);
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
@@ -189,5 +211,7 @@ async function backup() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  await store.markBackedUp();
   toast('Backup saved');
+  return true;
 }
