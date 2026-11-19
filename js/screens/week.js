@@ -97,8 +97,11 @@ export function render(el) {
 function capacityLine(w) {
   if (!w) return '';
   if (w.overflowMinutes) {
-    const names = [...new Set(w.overflow.map((o) => o.title))].slice(0, 2).join(', ');
-    return `<span class="warn">${formatMinutes(w.overflowMinutes)} doesn't fit</span> · ${esc(names)}. Add hours or move a deadline.`;
+    const names = [...new Set(w.overflow.map((o) => o.title))];
+    const shown = names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
+    const study = w.overflow.some((o) => o.kind === 'study'), tasks = w.overflow.some((o) => o.kind === 'task');
+    const fix = tasks && !study ? 'Add free hours or move a deadline.' : study && !tasks ? 'Add free hours, raise the daily limit or lower weekly hours.' : 'Add free hours or raise the daily limit.';
+    return `<span class="warn">${formatMinutes(w.overflowMinutes)} doesn't fit</span> · ${esc(shown)}. ${fix}`;
   }
   return `<span class="num">${formatMinutes(w.planned)}</span> planned · <span class="num">${formatMinutes(Math.max(0, w.free - w.planned))}</span> free`;
 }

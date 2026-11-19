@@ -43,7 +43,7 @@ export function render(el) {
   if (running) el.append(running);
 
   // End-of-day check-in
-  const openBlocks = blocks.filter((b) => b.status === 'planned');
+  const openBlocks = blocks.filter((b) => b.status === 'planned' && b.start <= nowMin());
   if (openBlocks.length && nowMin() >= toMin(state.settings.checkinFrom) && state.settings.lastCheckin !== today) {
     const bar = h(`<button class="checkin">${icon('check', 18)}<span><strong>Check in</strong> Mark what you got done today</span>${icon('caretRight', 16)}</button>`);
     bar.addEventListener('click', openCheckin);
@@ -111,7 +111,8 @@ const dayWord = (k) => { const s = shortDate(k); return s === 'Today' || s === '
 
 function openCheckin() {
   const today = todayKey();
-  const blocks = state.blocks.filter((b) => b.date === today && b.status !== 'missed').sort((a, b) => a.start - b.start);
+  // Only blocks that have started: later ones can still happen tonight.
+  const blocks = state.blocks.filter((b) => b.date === today && b.status !== 'missed' && b.start <= nowMin()).sort((a, b) => a.start - b.start);
   const answers = Object.fromEntries(blocks.map((b) => [b.id, b.status === 'done' ? 'done' : 'missed']));
 
   openSheet({

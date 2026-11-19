@@ -10,6 +10,13 @@ This build covers **all four phases** of the plan.
 - **Phase 3:** hold and drag blocks to reorder them or move them to another day (they get pinned), a long-press menu (edit, pin/unpin, move to tomorrow, delete or skip), "Re-spread" for a week, swipe left to delete a task, and a zoomed day view from the Week tab.
 - **Phase 4:** notes with topics and Q:/A: flashcards, spaced-repetition reviews (1, 3, 7, 14, 30 days) planned as 15-minute blocks, focus mode with a timer and optional Pomodoro, planned vs actual time, habits, grades with a "what do I need" calculator, stats, search, repeating tasks, and a Sunday summary of the week ahead.
 
+## How the planner works
+
+- Plans 5 weeks ahead. Things already planned **stay put** unless they have to move; new work goes into free space on the least busy day.
+- Tasks are finished **the day before they're due** where possible (Settings → "Finish tasks the day before they're due").
+- Reviews go on their due day; overdue tasks are planned as soon as possible.
+- **Re-spread** (Week tab) rebalances one week from scratch.
+
 ## Put it on your iPhone
 
 1. Push this folder to a **public** GitHub repository.

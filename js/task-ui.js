@@ -135,6 +135,7 @@ export function openTaskEditor(existing, defaults = {}) {
               <input class="input num" type="time" step="300" value="${task.notBeforeTime || ''}" data-nb-time aria-label="Not before time" style="flex:0 0 112px">
               <button type="button" class="text-button date-clear" data-nb-clear>Clear</button>
             </div>
+            <p class="fineprint warn-text" data-nb-warn hidden>This is after the deadline, so the task can only be planned late.</p>
           </div>
           <div class="field" data-field="repeat" ${task.type === 'exam' ? 'hidden' : ''}>
             <span class="label">Repeat<span class="hint">When you finish it, the next one is added automatically</span></span>
@@ -204,6 +205,10 @@ export function openTaskEditor(existing, defaults = {}) {
       })));
       body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
       const nbDate = body.querySelector('[data-nb-date]'), nbTime = body.querySelector('[data-nb-time]');
+      const nbWarn = () => { body.querySelector('[data-nb-warn]').hidden = !(task.notBefore && task.deadline && task.notBefore > task.deadline); };
+      nbWarn();
+      body.addEventListener('change', nbWarn);
+      body.addEventListener('click', () => setTimeout(nbWarn));
       nbDate.addEventListener('change', () => { task.notBefore = nbDate.value || null; if (!task.notBefore) { task.notBeforeTime = null; nbTime.value = ''; } });
       nbTime.addEventListener('change', () => {
         if (nbTime.value && !nbDate.value) { nbDate.value = todayKey(); task.notBefore = todayKey(); }
@@ -223,9 +228,13 @@ export function openTaskEditor(existing, defaults = {}) {
     },
   });
 
-  function save(close) {
+  async function save(close) {
     if (!task.title.trim()) return;
-    store.saveTask(task);
     close();
+    await store.saveTask(task);
+    // A task without a list or date isn't planned: say where it went instead of letting it vanish.
+    if (isNew && task.inbox) {
+      toast('Added to the Inbox. Give it a list or date to plan it.', { action: () => import('./screens/tasks.js').then((m) => m.showInbox()), actionLabel: 'Show' });
+    }
   }
 }

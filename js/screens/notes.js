@@ -57,8 +57,9 @@ export function render(el) {
   const wrap = topicsSec.querySelector('.tgroups');
   let any = false;
   for (const g of groups) {
-    const topics = state.topics.filter((t) => (t.subjectId || null) === g.id).sort((a, b) => a.name.localeCompare(b.name));
-    const loose = state.notes.filter((n) => !n.topicId && (n.subjectId || null) === g.id);
+    const sid = (x) => (x.subjectId && store.subjectById(x.subjectId) ? x.subjectId : null); // deleted subject → "No subject"
+    const topics = state.topics.filter((t) => sid(t) === g.id).sort((a, b) => a.name.localeCompare(b.name));
+    const loose = state.notes.filter((n) => !n.topicId && sid(n) === g.id);
     if (!topics.length && !loose.length) continue;
     any = true;
     const isOpen = open.has(String(g.id));

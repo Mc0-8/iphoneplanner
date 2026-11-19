@@ -30,12 +30,16 @@ export function openAvailability() {
           </div>`);
         const [on] = row.querySelectorAll('input[type=checkbox]');
         const [from, until] = row.querySelectorAll('input[type=time]');
+        const warn = h('<p class="fineprint warn-text" hidden>The end time must be after the start, or this day counts as unavailable.</p>');
+        row.append(warn);
         const save = () => {
           const availability = structuredClone(state.settings.availability);
           availability[wd] = { on: on.checked, start: from.value || '16:00', end: until.value || '21:00' };
           row.querySelector('.avail-times').hidden = !on.checked;
+          warn.hidden = !(on.checked && availability[wd].end <= availability[wd].start);
           store.updateSettings({ availability });
         };
+        warn.hidden = !(a.on && a.end <= a.start);
         [on, from, until].forEach((i) => i.addEventListener('change', save));
         wrap.append(row);
       }
@@ -76,7 +80,7 @@ export function openCommitments() {
   });
 }
 
-function editCommitment(existing, onDone) {
+export function editCommitment(existing, onDone = () => {}) {
   const c = existing ? structuredClone(existing) : { id: store.uid(), name: '', weekdays: [1, 2, 3, 4, 5], date: null, start: '08:30', end: '15:30' };
   const valid = () => c.name.trim() && c.end > c.start && (c.date || c.weekdays.length);
   openSheet({
@@ -110,7 +114,14 @@ function editCommitment(existing, onDone) {
         </div>
         ${existing ? `<div class="delete-row"><button type="button" class="text-button danger with-icon" data-delete>${icon('trash', 18)} Delete commitment</button></div>` : ''}`;
       const name = body.querySelector('.title-input');
-      const sync = () => { saveBtn.disabled = !valid(); };
+      const msg = h('<p class="fineprint warn-text" hidden></p>');
+      body.querySelector('[data-end]').closest('.field').append(msg);
+      const sync = () => {
+        saveBtn.disabled = !valid();
+        const overnight = c.start && c.end && c.end <= c.start;
+        msg.hidden = !overnight;
+        msg.textContent = overnight ? 'The end time must be after the start. For something past midnight, add two: one until 23:55 and one from 00:00 the next day.' : '';
+      };
       const onceIn = body.querySelector('[data-once]');
       body.querySelectorAll('[data-seg="when"] button').forEach((b) => b.addEventListener('click', () => {
         const once = b.dataset.v === 'once';

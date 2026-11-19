@@ -48,25 +48,34 @@ export function commitmentsOn(commitments, key, habits = []) {
 }
 
 /**
- * @param data {tasks, subjects, commitments, daysOff, blocks, settings}
+ * Plan the coming weeks.
+ *
+ * The plan is "sticky": a block that is already planned stays where it is as long as that spot is
+ * still valid (within its allowed days, free hours and daily limit, and not clashing with anything
+ * more urgent). Only new work, and blocks that have to move, are placed again — on the least busy
+ * day that fits. `opts.fresh = {from, to}` ignores existing spots in that date range (Re-spread).
+ *
+ * @param data {tasks, subjects, commitments, daysOff, habits, topics, blocks, settings}
  * @returns {blocks, overflow, weeks}
  */
-export function plan(data, now = new Date()) {
+export function plan(data, now = new Date(), opts = {}) {
   const { tasks, subjects, commitments, daysOff, settings } = data;
   const topics = data.topics || [];
+  const habits = data.habits || [];
   const today = todayKey();
   const nowM = currentMin(now);
   const end = horizonEnd(today);
   const cap = settings.dailyCap;
   const gap = settings.breakMinutes;
   const cutoff = toMin(settings.hardCutoff);
+  const finishEarly = settings.finishDayBefore !== false;
 
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   const subjectById = new Map(subjects.map((s) => [s.id, s]));
 
-  // 1. Decide which existing blocks stay.
+  // 1. Sort existing blocks: kept as they are (history, pinned, already started) or "previous" spots.
   const kept = [];
-  const idPool = new Map();
+  const previous = [];
   for (const b of data.blocks) {
     if (b.kind === 'task') {
       const t = taskById.get(b.taskId);
@@ -80,20 +89,28 @@ export function plan(data, now = new Date()) {
     if (b.date < today) { kept.push({ ...b, status: 'missed' }); continue; } // never checked off
     if (b.pinned) { kept.push(b); continue; }
     if (b.date === today && b.start < nowM) { kept.push(b); continue; } // already started: frozen
-    // everything else is re-planned; remember its id so the new block can keep it
+    previous.push(b);
+  }
+  const fresh = opts.fresh;
+  const inFresh = (b) => fresh && b.date >= fresh.from && b.date <= fresh.to;
+  const candidates = new Map(); // key → previous blocks that may keep their spot
+  const idPool = new Map();     // key → previous blocks whose ids can be reused
+  for (const b of [...previous].sort((a, c) => a.date.localeCompare(c.date) || a.start - c.start)) {
     const k = poolKey(b);
     if (!idPool.has(k)) idPool.set(k, []);
     idPool.get(k).push(b);
+    if (inFresh(b)) continue;
+    if (!candidates.has(k)) candidates.set(k, []);
+    candidates.get(k).push(b);
   }
-  for (const list of idPool.values()) list.sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
 
-  // 2. Days, free time and load.
+  // 2. Days: free window, hard-busy times, load, and the soft "reserved" spots of previous blocks.
   const days = [];
   for (let k = today; k <= end; k = addDays(k, 1)) days.push(k);
   const dayInfo = new Map();
   for (const k of days) {
     const win = windowFor(settings, daysOff, k);
-    const busy = commitmentsOn(commitments, k, data.habits || []).map((c) => [c.s, c.e]);
+    const busy = commitmentsOn(commitments, k, habits).map((c) => [c.s, c.e]);
     let load = 0;
     for (const b of kept) {
       if (b.date !== k || b.status === 'missed') continue;
@@ -103,12 +120,9 @@ export function plan(data, now = new Date()) {
     let win2 = win;
     if (win && k === today) win2 = [Math.max(win[0], ceilTo(nowM, ROUND)), win[1]];
     if (win2 && win2[1] - win2[0] < MIN_PIECE) win2 = null;
-    dayInfo.set(k, { win: win2, busy, load, keys: new Set() });
+    dayInfo.set(k, { win: win2, busy, load, keys: new Set(), reserved: new Set() });
   }
-  for (const b of kept) {
-    const info = dayInfo.get(b.date);
-    if (info) info.keys.add(keyOf(b));
-  }
+  for (const b of kept) dayInfo.get(b.date)?.keys.add(keyOf(b));
 
   // 3. Work items.
   const items = [];
@@ -136,6 +150,9 @@ export function plan(data, now = new Date()) {
   }
 
   // Tasks (not in the inbox, not exams)
+  // Pieces must fit in a day: never longer than the daily limit or the longest free window.
+  const longestWindow = Math.max(0, ...days.map((k) => { const w = windowFor(settings, daysOff, k); return w ? w[1] - w[0] : 0; }));
+  const maxPiece = Math.max(MIN_PIECE, Math.min(cap, longestWindow || cap));
   for (const t of tasks) {
     if (t.completed || t.type === 'exam' || t.inbox) continue;
     const used = kept.filter((b) => b.kind === 'task' && b.taskId === t.id && b.status !== 'missed')
@@ -143,12 +160,14 @@ export function plan(data, now = new Date()) {
     let remaining = t.duration - used;
     if (remaining < MIN_PIECE / 3) continue;
     remaining = Math.max(remaining, MIN_PIECE);
-    const latest = t.deadline ? (t.deadline < today ? today : (t.deadline > end ? end : t.deadline)) : end;
+    const overdue = t.deadline && t.deadline < today;
+    // Overdue work is planned as soon as possible on any day, not only today.
+    const latest = t.deadline && !overdue ? (t.deadline > end ? end : t.deadline) : end;
     const earliest = t.notBefore && t.notBefore > today ? t.notBefore : today;
     if (earliest > end) continue; // starts after the planning window
-    const pieces = t.duration > SPLIT_ABOVE ? splitMinutes(remaining, CHUNK) : [remaining];
+    const pieces = t.duration > Math.min(SPLIT_ABOVE, maxPiece) ? splitMinutes(remaining, Math.min(CHUNK, maxPiece), maxPiece) : [remaining];
     pieces.forEach((min) => items.push({
-      kind: 'task', taskId: t.id, key: 'task:' + t.id, duration: min,
+      kind: 'task', taskId: t.id, key: 'task:' + t.id, duration: min, asap: overdue,
       first: earliest, last: latest < earliest ? earliest : latest,
       notBefore: t.notBefore || null, notBeforeMin: t.notBeforeTime ? toMin(t.notBeforeTime) : 0,
       group: t.deadline ? 1 : 3,
@@ -179,15 +198,15 @@ export function plan(data, now = new Date()) {
           total++;
           if (k >= today) left++;
         }
-        const missed = data.blocks.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.date >= wk && b.date < today &&
-          (b.status === 'missed' || (b.status === 'planned' && !b.pinned))).reduce((sum, b) => sum + b.duration, 0);
+        const missed = data.blocks.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.date >= wk && b.date < today && b.status !== 'done')
+          .reduce((sum, b) => sum + b.duration, 0);
         const fromToday = kept.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.status !== 'missed' && b.date >= today && b.date <= wkEnd)
           .reduce((sum, b) => sum + b.duration, 0);
         const share = total ? Math.round(((target * left) / total + missed) / 15) * 15 : 0;
         remaining = Math.min(remaining, share - fromToday);
       }
       if (remaining < MIN_PIECE) continue;
-      const pieces = splitMinutes(remaining, settings.sessionLength);
+      const pieces = splitMinutes(remaining, Math.min(settings.sessionLength, maxPiece), maxPiece);
       pieces.forEach((min, i) => studyItems.push({
         kind: 'study', subjectId: s.id, key: 'sub:' + s.id, duration: min,
         first, last: wkEnd > end ? end : wkEnd,
@@ -200,43 +219,138 @@ export function plan(data, now = new Date()) {
   studyItems.sort((a, b) => a.week.localeCompare(b.week) || a.round - b.round || a.order - b.order);
   items.push(...studyItems);
 
-  // Order: exam-boosted study, deadline tasks, regular study, tasks without deadline.
+  // Order: reviews, exam-boosted study, deadline tasks, regular study, tasks without deadline.
   items.sort((a, b) => a.group - b.group ||
     (a.kind === b.kind && a.kind !== 'study' ? (a.sortDate.localeCompare(b.sortDate) || a.prio - b.prio) : 0));
   // (Array.prototype.sort is stable, so study keeps its round-robin order.)
 
-  // 4. Place each item on the least busy day that still fits.
-  const placed = [];
-  const overflow = [];
+  // 4. Place each item: keep its previous spot if still valid, otherwise the least busy day that fits.
+  const clashes = (info, start, dur) => info.busy.some(([s, e]) => start < e + gap && s - gap < start + dur);
+  // First match every item to its own previous spot (same kind, same length, allowed day, still free of
+  // fixed times). Only matched spots are reserved; old spots nothing claims are simply let go.
+  const fitsWindow = (item, b) => {
+    const info = dayInfo.get(b.date);
+    if (!info?.win || b.date < item.first || b.date > item.last) return false;
+    const after = item.notBefore && b.date === item.notBefore ? item.notBeforeMin : 0;
+    return b.start >= Math.max(info.win[0], after) && b.start + item.duration <= info.win[1] && !clashes(info, b.start, item.duration);
+  };
   for (const item of items) {
+    const list = candidates.get(poolKey(item)) || [];
+    const i = list.findIndex((b) => b.duration === item.duration && fitsWindow(item, b));
+    if (i >= 0) {
+      item.prev = list.splice(i, 1)[0];
+      dayInfo.get(item.prev.date).reserved.add(item.prev);
+      continue;
+    }
+  }
+
+  const validAt = (item, k, start) => {
+    const info = dayInfo.get(k);
+    if (!info?.win || k < item.first || k > item.last) return false;
+    const after = item.notBefore && k === item.notBefore ? item.notBeforeMin : 0;
+    return start >= Math.max(info.win[0], after) && start + item.duration <= info.win[1] &&
+      info.load + item.duration <= cap && !clashes(info, start, item.duration);
+  };
+  const reservedLoad = (info) => { let n = 0; for (const b of info.reserved) n += b.duration; return n; };
+  const reservedKeys = (info) => { const s2 = new Set(); for (const b of info.reserved) s2.add(keyOf(b)); return s2; };
+
+  // Priority of an existing block (lower = more important), matching the item groups above.
+  const boostedOn = (subjectId, date) => exams.some((e) => e.subjectId === subjectId && e.deadline >= mondayOf(date) && addDays(e.deadline, -14) <= addDays(mondayOf(date), 6));
+  const rankOf = (b) => (b.kind === 'review' ? -1 : b.kind === 'task' ? (taskById.get(b.taskId)?.deadline ? 1 : 3) : boostedOn(b.subjectId, b.date) ? 0 : 2);
+
+  const bestNew = (item, lastDay) => {
     let best = null;
     for (const k of days) {
-      if (k < item.first || k > item.last) continue;
+      if (k < item.first || k > lastDay) continue;
       const info = dayInfo.get(k);
       if (!info.win || info.load + item.duration > cap) continue;
       const after = item.notBefore && k === item.notBefore ? item.notBeforeMin : 0;
-      const start = findSlot(info, item.duration, gap, after);
+      // Prefer a slot that leaves existing plans alone; displace one only if nothing else fits.
+      const soft = { win: info.win, busy: [...info.busy, ...[...info.reserved].map((b) => [b.start, b.start + b.duration])] };
+      let start = findSlot(soft, item.duration, gap, after);
+      let displaced = false;
+      if (start === null) {
+        // Only push aside planned work that is less important than this item.
+        const firm = { win: info.win, busy: [...info.busy, ...[...info.reserved].filter((b) => rankOf(b) < item.group).map((b) => [b.start, b.start + b.duration])] };
+        start = findSlot(firm, item.duration, gap, after);
+        displaced = true;
+      }
       if (start === null) continue;
-      let score = info.load;
-      if (info.keys.has(item.key)) score += 10000;                       // same subject/task twice in a day
-      if (dayInfo.get(addDays(k, -1))?.keys.has(item.key)) score += 90;  // back-to-back days
-      if (dayInfo.get(addDays(k, 1))?.keys.has(item.key)) score += 90;
-      if (item.hard && start + item.duration > cutoff) score += 45;      // hard subjects early
+      const rl = reservedLoad(info);
+      const rk = reservedKeys(info);
+      let score = info.load + rl;
+      if (displaced) score += 60;
+      if (info.load + rl + item.duration > cap) score += 500;               // would push planned work off this day
+      if (info.keys.has(item.key) || rk.has(item.key)) score += 10000;     // same subject/task twice in a day
+      const prevDay = dayInfo.get(addDays(k, -1)), nextDay = dayInfo.get(addDays(k, 1));
+      if (prevDay?.keys.has(item.key)) score += 90;                         // back-to-back days
+      if (nextDay?.keys.has(item.key)) score += 90;
+      if (item.hard && start + item.duration > cutoff) score += 45;         // hard subjects early
+      if (item.asap) score += daysBetweenKeys(k, today) * 1000;            // overdue: earliest day wins
       if (!best || score < best.score) best = { k, start, score };
     }
-    if (!best) { overflow.push(item); continue; }
-    const info = dayInfo.get(best.k);
-    const reuse = idPool.get(poolKey(item))?.shift();
+    return best;
+  };
+
+  const placed = [];
+  const overflow = [];
+  const keepPrev = (item, allowDueDay, due) => {
+    const b = item.prev;
+    if (!b || (!allowDueDay && b.date === due)) return null;
+    // Its own reservation shouldn't block it.
+    dayInfo.get(b.date).reserved.delete(b);
+    if (validAt(item, b.date, b.start)) return { k: b.date, start: b.start, prev: b };
+    dayInfo.get(b.date).reserved.add(b);
+    return null;
+  };
+
+  function place(item, chosen) {
+    const info = dayInfo.get(chosen.k);
     const block = {
-      id: reuse ? reuse.id : uid(), date: best.k, start: best.start, duration: item.duration,
+      id: chosen.prev ? chosen.prev.id : null, date: chosen.k, start: chosen.start, duration: item.duration,
       kind: item.kind, taskId: item.taskId || null, subjectId: item.subjectId || null,
       topicIds: item.topicIds || null,
       pinned: false, status: 'planned',
     };
+    if (chosen.prev) {
+      dayInfo.get(chosen.prev.date)?.reserved.delete(chosen.prev);
+      const pool = idPool.get(poolKey(item));
+      const at = pool ? pool.indexOf(chosen.prev) : -1;
+      if (at >= 0) pool.splice(at, 1);
+    }
     placed.push(block);
     info.busy.push([block.start, block.start + block.duration]);
     info.load += block.duration;
     info.keys.add(item.key);
+  }
+
+  for (const item of items) {
+    // "Finish the day before": a task due on a later day avoids its due day when it can.
+    const due = item.kind === 'task' && finishEarly && item.deadline && item.deadline > item.first ? item.deadline : null;
+    // Reviews belong on their due day; the next two days are only a fallback.
+    if (item.kind === 'review' && item.prev && item.prev.date !== item.first) {
+      const onDay = (dayInfo.get(item.prev.date).reserved.delete(item.prev), bestNew(item, item.first));
+      dayInfo.get(item.prev.date).reserved.add(item.prev);
+      if (onDay) { dayInfo.get(item.prev.date).reserved.delete(item.prev); item.prevDropped = item.prev; item.prev = null; }
+    }
+    let chosen = keepPrev(item, !due, due);
+    if (!chosen && item.prev) dayInfo.get(item.prev.date).reserved.delete(item.prev); // its old spot is let go
+    if (!chosen && item.kind === 'review') chosen = bestNew(item, item.first);
+    if (!chosen) chosen = bestNew(item, due ? addDays(due, -1) : item.last);
+    if (!chosen && due && item.prev) { dayInfo.get(item.prev.date).reserved.add(item.prev); chosen = keepPrev(item, true, due); if (!chosen) dayInfo.get(item.prev.date).reserved.delete(item.prev); }
+    if (!chosen && due) chosen = bestNew(item, item.last);
+    if (!chosen) { overflow.push(item); continue; }
+
+    place(item, chosen);
+  }
+
+  // New spots reuse ids of previous blocks of the same kind (nearest date first), so open screens keep working.
+  for (const b of placed) {
+    if (b.id) continue;
+    const pool = idPool.get(poolKey(b)) || [];
+    let bi = -1, bd = Infinity;
+    pool.forEach((p, i) => { const d = Math.abs(daysBetweenKeys(p.date, b.date)); if (d < bd) { bd = d; bi = i; } });
+    b.id = bi >= 0 ? pool.splice(bi, 1)[0].id : uid();
   }
 
   // 5. Week summaries for the capacity check.
@@ -248,16 +362,19 @@ export function plan(data, now = new Date()) {
     for (let k = wk < today ? today : wk; k <= wkEnd; k = addDays(k, 1)) {
       const info = dayInfo.get(k);
       if (!info?.win) continue;
-      const open = freeMinutes(info.win, commitmentsOn(commitments, k, data.habits || []).map((c) => [c.s, c.e]));
+      const open = freeMinutes(info.win, commitmentsOn(commitments, k, habits).map((c) => [c.s, c.e]));
       free += Math.min(cap, open);
     }
     for (const b of all) if (b.date >= wk && b.date <= wkEnd && b.date >= today && b.status !== 'missed') planned += b.duration;
-    const over = overflow.filter((o) => o.last >= wk && o.last <= wkEnd);
+    const ref = (o) => (o.asap ? today : o.last);
+    const over = overflow.filter((o) => ref(o) >= wk && ref(o) <= wkEnd);
     weeks.push({ monday: wk, free, planned, overflowMinutes: over.reduce((s, o) => s + o.duration, 0), overflow: over });
   }
 
   return { blocks: all, overflow, weeks };
 }
+
+const daysBetweenKeys = (a, b) => Math.round((Date.UTC(...a.split('-').map((n, i) => (i === 1 ? n - 1 : +n))) - Date.UTC(...b.split('-').map((n, i) => (i === 1 ? n - 1 : +n)))) / 86400000);
 
 /** Same key for an old block and the new item that replaces it. */
 function poolKey(x) {
@@ -269,8 +386,8 @@ function keyOf(b) {
   return b.kind === 'task' ? 'task:' + b.taskId : b.kind === 'study' ? 'sub:' + b.subjectId : b.kind + ':' + b.id;
 }
 
-/** Split minutes into pieces of `size`; a small remainder joins the last piece. */
-export function splitMinutes(total, size) {
+/** Split minutes into pieces of `size`; a small remainder joins the last piece if that stays within `max`. */
+export function splitMinutes(total, size, max = Infinity) {
   const pieces = [];
   let left = total;
   while (left > 0) {
@@ -278,7 +395,7 @@ export function splitMinutes(total, size) {
     pieces.push(size);
     left -= size;
   }
-  if (pieces.length > 1 && pieces[pieces.length - 1] < MIN_PIECE + 5) {
+  if (pieces.length > 1 && pieces[pieces.length - 1] < MIN_PIECE + 5 && pieces[pieces.length - 2] + pieces[pieces.length - 1] <= max) {
     const tail = pieces.pop();
     pieces[pieces.length - 1] += tail;
   }

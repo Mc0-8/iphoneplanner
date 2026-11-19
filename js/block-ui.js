@@ -61,14 +61,16 @@ export function itemRow(item, { live = false } = {}) {
   }
   if (item.type === 'fixed') {
     const c = item.commitment;
-    return h(`
+    const row = h(`
       <li class="trow fixed${past ? ' past' : ''}" data-start="${item.start}" data-end="${item.end}">
         <div class="ttime num">${fromMin(item.start)}<span>${fromMin(item.end)}</span></div>
-        <div class="tbody">
+        <button class="tbody" type="button">
           <span class="title">${esc(c.name)}</span>
           <span class="sub">${c.date ? 'One-off' : 'Fixed'} · ${formatMinutes(item.end - item.start)}</span>
-        </div>
+        </button>
       </li>`);
+    row.querySelector('.tbody').addEventListener('click', () => import('./screens/schedule.js').then((m) => m.editCommitment(state.commitments.find((x) => x.id === c.id), () => {})));
+    return row;
   }
 
   const b = item.block;
@@ -133,11 +135,12 @@ export function openBlockMenu(block) {
   const d = describe(block);
   const isTask = block.kind === 'task';
   const tomorrow = addDays(block.date < todayKey() ? todayKey() : block.date, 1);
+  const nextLabel = block.date <= todayKey() ? 'Move to tomorrow' : `Move to ${shortDate(tomorrow)}`;
   const actions = [
     { id: 'focus', icon: 'clock', label: 'Start focus timer', show: block.status === 'planned' && block.date === todayKey() && block.kind !== 'review' },
     { id: 'edit', icon: 'pencil', label: block.kind === 'review' ? 'Start review' : isTask ? 'Edit task' : 'Edit subject', show: !!d.onOpen },
     { id: 'pin', icon: block.pinned ? 'unpin' : 'pin', label: block.pinned ? 'Unpin (let the planner move it)' : 'Pin to this time', show: block.status === 'planned' },
-    { id: 'tomorrow', icon: 'arrowRight', label: 'Move to tomorrow', show: block.status === 'planned' && tomorrow <= horizonEnd() },
+    { id: 'tomorrow', icon: 'arrowRight', label: nextLabel, show: block.status === 'planned' && tomorrow <= horizonEnd() },
     { id: 'delete', icon: isTask ? 'trash' : 'skip', label: isTask ? 'Delete task' : block.kind === 'review' ? 'Skip this review' : 'Skip this session', show: block.status === 'planned' || isTask, danger: true },
   ].filter((a) => a.show);
 
@@ -155,7 +158,7 @@ export function openBlockMenu(block) {
         if (a === 'pin') await store.setPinned(block.id, !block.pinned);
         if (a === 'tomorrow') {
           const start = await store.moveBlockToDay(block.id, tomorrow);
-          toast(`Moved to tomorrow, ${fromMin(start)}`);
+          toast(`Moved to ${shortDate(tomorrow).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase())}, ${fromMin(start)}`);
         }
         if (a === 'delete' && isTask) {
           const removed = await store.deleteTask(block.taskId);
@@ -233,7 +236,7 @@ export function enableListDrag(ul, dayKey) {
         let earliest = win[0];
         if (dayKey === todayKey()) earliest = Math.max(earliest, ceil5(nowMin()));
         let start;
-        if (prev) start = ceil5(Number(prev.dataset.end) + gap);
+        if (prev) start = Math.max(earliest, ceil5(Number(prev.dataset.end) + gap));
         else if (next) start = Math.max(earliest, Math.floor((Number(next.dataset.start) - block.duration - gap) / 5) * 5);
         else start = earliest;
         if (start === block.start) return;

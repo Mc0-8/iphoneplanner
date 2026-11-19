@@ -30,7 +30,7 @@ export function openReview(topicIds) {
         body.innerHTML = `
           <p class="review-count num">${i + 1} of ${queue.length}</p>
           <h3 class="review-title">${subject ? `<span class="dot" style="background:${subject.colour}"></span>` : ''}${esc(t.name)}</h3>
-          <p class="fineprint" style="margin-top:2px">${esc(subject?.name || '')}${t.lastReviewed ? ` · last reviewed ${esc(shortDate(t.lastReviewed).toLowerCase())}` : ' · first review'}</p>
+          <p class="fineprint" style="margin-top:2px">${[subject?.name, t.lastReviewed ? `last reviewed ${shortDate(t.lastReviewed).toLowerCase()}` : 'first review'].filter(Boolean).map(esc).join(' · ')}</p>
           ${plain.length ? `<div class="review-notes">${plain.map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : ''}
           ${cards.length ? `<div class="cards">${cards.map((c, j) => `
             <button type="button" class="card" data-card="${j}" aria-expanded="false">

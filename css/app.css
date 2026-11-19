@@ -895,3 +895,12 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; paddi
 .habit-row .sub span:first-child { color: var(--accent); }
 .date-wrap .input { min-width: 0; }
 .date-wrap .date-clear { padding: 0 6px; flex: none; }
+
+.warn-text { color: var(--accent); margin: 8px 0 0; }
+
+/* Polish from the test pass */
+.now-label { left: auto; right: 0; top: -10px; }
+.now-line::after { left: -3px; right: auto; }
+.link-button.open-day { white-space: nowrap; flex: none; }
+.agenda .section-head h2 { min-width: 0; }
+.zstats strong { font-size: clamp(16px, 5.2vw, 20px); }

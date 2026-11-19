@@ -6,7 +6,7 @@ import { applyTheme } from '../theme.js';
 import { todayKey, formatMinutes } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 
-export const VERSION = '0.4.2';
+export const VERSION = '0.5.0';
 
 export function openSettings() {
   openSheet({
@@ -57,6 +57,10 @@ export function openSettings() {
               ${[30, 45, 60, 75, 90].map((m) => `<option value="${m}" ${state.settings.sessionLength === m ? 'selected' : ''}>${formatMinutes(m)}</option>`).join('')}
             </select>
           </label>
+          <label class="setting" for="day-before">
+            <span>Finish tasks the day before they're due<span class="hint">For homework you hand in on the due day. The due day is used only if there's no room before.</span></span>
+            <input id="day-before" type="checkbox" class="switch" ${state.settings.finishDayBefore !== false ? 'checked' : ''}>
+          </label>
           <label class="setting" for="pomodoro">
             <span>Pomodoro in focus mode<span class="hint">25 minutes of work, then a 5-minute break</span></span>
             <input id="pomodoro" type="checkbox" class="switch" ${state.settings.pomodoro ? 'checked' : ''}>
@@ -98,6 +102,7 @@ export function openSettings() {
         store.updateSettings({ defaultDuration: Number(e.target.value) }));
 
       body.querySelector('#daily-cap').addEventListener('change', (e) => store.updateSettings({ dailyCap: Number(e.target.value) }));
+      body.querySelector('#day-before').addEventListener('change', (e) => store.updateSettings({ finishDayBefore: e.target.checked }));
       body.querySelector('#pomodoro').addEventListener('change', (e) => store.updateSettings({ pomodoro: e.target.checked }));
       body.querySelector('#session-length').addEventListener('change', (e) => store.updateSettings({ sessionLength: Number(e.target.value) }));
       body.querySelector('#cutoff').addEventListener('change', (e) => { if (e.target.value) store.updateSettings({ hardCutoff: e.target.value }); });

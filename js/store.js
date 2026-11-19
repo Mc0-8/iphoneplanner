@@ -2,7 +2,7 @@
 // After every change the scheduler re-plans the coming weeks (see scheduler.js).
 
 import * as db from './db.js';
-import { todayKey, addDays, weekday } from './dates.js';
+import { todayKey, addDays, weekday, daysBetween } from './dates.js';
 import { plan, freeSlot, windowFor } from './scheduler.js';
 
 export const SUBJECT_COLOURS = ['#6B8F71', '#4F6D8F', '#C29A3B', '#8A5A7A', '#3F8A8A', '#7A7368'];
@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   hardCutoff: '18:00',
   checkinFrom: '20:00',
   pomodoro: false,
+  finishDayBefore: true,
 };
 
 export const REVIEW_STEPS = [1, 3, 7, 14, 30]; // days until the next review
@@ -42,13 +43,15 @@ export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().t
 export async function load() {
   const all = await Promise.all(db.STORES.map((s) => db.getAll(s)));
   const data = Object.fromEntries(db.STORES.map((s, i) => [s, all[i]]));
-  state.tasks = data.tasks;
+  state.tasks = data.tasks.map((t) => ({ steps: [], priority: 'medium', type: 'task', ...t, inbox: !t.listId && !t.deadline && !t.notBefore }));
   state.lists = data.lists.sort((a, b) => a.order - b.order);
   state.subjects = data.subjects.sort((a, b) => a.order - b.order);
   state.commitments = data.commitments;
   state.daysOff = data.daysOff;
   state.blocks = data.blocks;
   for (const k of ['notes', 'topics', 'habits', 'grades', 'timeLogs']) state[k] = data[k] || [];
+  state.habits = state.habits.map((x) => ({ done: [], weekdays: [], ...x }));
+  state.commitments = state.commitments.map((c) => ({ weekdays: [], date: null, ...c }));
   state.settings = { ...structuredClone(DEFAULT_SETTINGS), ...(data.settings.find((s) => s.id === 'app') || {}) };
 
   // First run: two starter lists.
@@ -64,15 +67,28 @@ export async function load() {
 }
 
 /** Re-plan and notify the screens. Called after every change. */
-export async function commit() {
-  const result = plan(state);
+export async function commit(opts = {}) {
+  housekeeping();
+  const result = plan(state, new Date(), opts);
   state.blocks = result.blocks;
   state.plan = { overflow: result.overflow, weeks: result.weeks };
   emit();
   await db.replaceStore('blocks', state.blocks);
 }
 
-export const replan = commit;
+export const replan = () => commit();
+
+/** Small automatic tidy-ups that depend on the date. */
+function housekeeping() {
+  const today = todayKey();
+  for (const t of state.tasks) {
+    // An exam is over once its day has passed.
+    if (t.type === 'exam' && !t.completed && t.deadline && t.deadline < today) {
+      t.completed = true; t.completedAt = Date.now(); t.autoCompleted = true;
+      db.put('tasks', t);
+    }
+  }
+}
 
 /* ---------- Tasks ---------- */
 
@@ -118,8 +134,11 @@ async function markTask(task, completed) {
   task.completed = completed;
   task.completedAt = completed ? Date.now() : null;
   if (completed && task.repeat && task.repeat !== 'none' && !task.nextId) {
-    const next = { ...structuredClone(task), id: uid(), completed: false, completedAt: null, nextId: null, createdAt: Date.now(),
-      deadline: nextOccurrence(task.repeat, task.deadline) };
+    const deadline = nextOccurrence(task.repeat, task.deadline);
+    const next = { ...structuredClone(task), id: uid(), completed: false, completedAt: null, nextId: null, createdAt: Date.now(), deadline };
+    // Keep "not before" the same distance before the deadline.
+    if (task.notBefore && task.deadline) next.notBefore = addDays(task.notBefore, daysBetween(task.deadline, deadline));
+    else next.notBefore = null;
     task.nextId = next.id;
     state.tasks.push(next);
     await db.put('tasks', next);
@@ -207,7 +226,7 @@ export async function respreadWeek(monday, sunday) {
   for (const b of state.blocks) {
     if (b.status === 'planned' && b.date >= monday && b.date <= sunday && b.date >= today) b.pinned = false;
   }
-  await commit();
+  await commit({ fresh: { from: monday < today ? today : monday, to: sunday } });
 }
 
 /** End-of-day check-in: {blockId: 'done' | 'missed'}. */

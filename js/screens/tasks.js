@@ -10,6 +10,13 @@ let inboxOpen = false;
 let showCompleted = false;
 
 export const addLabel = 'Add task';
+
+/** Open the Tasks tab with the Inbox expanded. */
+export function showInbox() {
+  inboxOpen = true;
+  if (location.hash === '#tasks') window.dispatchEvent(new HashChangeEvent('hashchange'));
+  else location.hash = '#tasks';
+}
 export const addDefaults = () => ({});
 
 export function render(el) {
