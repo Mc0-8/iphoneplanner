@@ -16,6 +16,7 @@ This build covers **all four phases** of the plan.
 - **0.9:** a fresh look: rounded cards with soft shadows, each subject's colour washed across its timetable blocks, exams, notes and topics, a frosted tab bar with the current tab highlighted, pill-shaped buttons and chips, settings and edit sheets grouped into cards, and a deeper dark mode.
 - **0.10:** a bit of life: screens fade in when you switch tabs, buttons and tabs spring when tapped, the tick circle pops when you finish something, and confetti for big moments (an exam ticked off, a review session done, or everything planned for today finished). Phones set to "Reduce motion" get none of it.
 - **0.10.1:** the red "now" line on Today no longer runs into the last block or the text below it once everything planned for the day is over (e.g. after 21:00).
+- **0.11.0:** flashcards are now big cards that flip over when you tap them. Mark each one "Got it" or "Missed it" (or swipe right or left). Cards move between three boxes: right moves a card up, wrong sends it back to box 1, and a week without seeing it drops it one box. Box 1 cards come first. Start from a topic's "Flashcards" button or "Flip through cards" in a review.
 - **0.10.2:** the day view (Week → Open day) now always runs to 00:00, so the "now" line no longer slides under the text late in the evening, and available hours can end at 00:00 to allow planning up to midnight.
 
 ## How the planner works

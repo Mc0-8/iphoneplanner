@@ -1277,3 +1277,103 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; paddi
 
 /* Confetti layer */
 .confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 90; pointer-events: none; }
+
+/* =========================================================
+   Flashcards (0.11): big flip card, Got it / Missed it, three boxes
+   ========================================================= */
+:root { --got: #3E8E5E; }
+[data-theme="dark"] { --got: #5DB37E; }
+
+.boxbar { display: inline-flex; flex-direction: column; gap: 6px; --bx: var(--sc, var(--accent)); }
+.boxbar-track { display: flex; gap: 2px; width: 44px; height: 6px; border-radius: 3px; overflow: hidden; align-self: center; }
+.boxbar.big { display: flex; width: 100%; }
+.boxbar.big .boxbar-track { width: 100%; height: 8px; border-radius: 4px; }
+.boxbar .b1, .fbox.b1, .box-tile.b1 { --c: color-mix(in srgb, var(--text-2) 55%, transparent); }
+.boxbar .b2, .fbox.b2, .box-tile.b2 { --c: color-mix(in srgb, var(--bx, var(--accent)) 60%, var(--surface)); }
+.boxbar .b3, .fbox.b3, .box-tile.b3 { --c: var(--bx, var(--accent)); }
+.boxbar-track > span { background: var(--c); min-width: 4px; }
+.boxbar-keys { display: flex; gap: 14px; font-size: 12.5px; color: var(--text-2); }
+.boxbar-keys i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; background: var(--c); }
+.flip-start { margin-top: var(--s3); display: grid; gap: 10px; --bx: var(--sc, var(--accent)); }
+.flip-start .quiz-btn.wide { margin-top: 0; min-height: 50px; font-size: 16.5px; }
+
+/* The flip screen */
+.sheet-body.flip-body { display: flex; flex-direction: column; overscroll-behavior: contain; }
+.flip-top { display: flex; align-items: center; justify-content: space-between; }
+.flip-boxes { display: flex; align-items: center; gap: 6px; }
+.fbox-label { font-size: 12.5px; color: var(--text-2); margin-right: 2px; }
+.fbox {
+  min-width: 30px; height: 26px; padding: 0 8px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--c) 35%, var(--surface-2));
+  box-shadow: inset 0 0 0 1.5px var(--c);
+}
+.fbox.here { background: var(--c); color: var(--surface); }
+.fbox.bump { animation: fbox-bump 0.35s cubic-bezier(.3,1.6,.5,1); }
+@keyframes fbox-bump { 50% { transform: scale(1.3); } }
+.flip-progress { height: 3px; margin-top: 10px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.flip-progress span { display: block; height: 100%; background: var(--accent); transition: width 0.3s ease; }
+
+.flip-stage { flex: 1; min-height: min(58vh, 560px); display: flex; margin-top: var(--s3); perspective: 1400px; }
+.flip-card {
+  --dx: 0px; --face: color-mix(in srgb, var(--sc, var(--accent)) var(--tint), var(--surface));
+  position: relative; flex: 1; display: block; padding: 0; border: 0; background: none; text-align: center; color: var(--text);
+  transform: translateX(var(--dx)) rotate(calc(var(--dx) / 22 * 1deg));
+  transition: transform 0.3s cubic-bezier(.2,.9,.3,1.2), opacity 0.25s;
+  animation: flip-in 0.32s cubic-bezier(.2,.9,.3,1.15);
+  touch-action: pan-y; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+}
+.flip-card:not(.tinted) { --face: var(--surface); }
+.flip-card.dragging { transition: none; }
+@keyframes flip-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } }
+.flip-inner {
+  position: absolute; inset: 0; display: block; transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+  transition: transform 0.55s cubic-bezier(.3,1.25,.5,1);
+}
+.flip-card.flipped .flip-inner { transform: rotateY(180deg); }
+.flip-face {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: 28px 22px; border-radius: 22px; overflow: auto;
+  background: var(--face); box-shadow: var(--shadow-lift), inset 0 0 0 1px var(--card-edge);
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+}
+.flip-card.tinted .flip-face { box-shadow: var(--shadow-lift), inset 0 6px 0 var(--sc), inset 0 0 0 1px var(--card-edge); }
+.flip-face.back { transform: rotateY(180deg); }
+.flip-label { position: absolute; top: 20px; left: 0; right: 0; font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); }
+.flip-text { font-family: var(--font-head); font-size: clamp(22px, 6.4vw, 30px); line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.flip-text.cloze { font-family: var(--font-body); font-size: clamp(19px, 5.4vw, 24px); font-weight: 500; line-height: 1.5; }
+.flip-text .blank { border-radius: 6px; padding: 1px 6px; background: color-mix(in srgb, var(--sc, var(--accent)) 75%, var(--surface)); color: var(--text); font-weight: 650; }
+.flip-text .blank.hidden-blank { color: transparent; background: color-mix(in srgb, var(--text) 14%, transparent); min-width: 3.2em; display: inline-block; }
+.flip-ask { font-size: 14px; color: var(--text-2); max-width: 90%; }
+.flip-hint { position: absolute; bottom: 18px; left: 0; right: 0; font-size: 13px; color: var(--text-2); }
+.flip-stamp {
+  position: absolute; top: 22px; padding: 4px 12px; border-radius: 8px; border: 2.5px solid; font-weight: 700; font-size: 17px;
+  text-transform: uppercase; letter-spacing: 0.04em; opacity: 0; transition: opacity 0.15s; z-index: 2; background: var(--surface);
+}
+.flip-stamp.got { left: 18px; color: var(--got); transform: rotate(-10deg); }
+.flip-stamp.miss { right: 18px; color: var(--accent); transform: rotate(10deg); }
+.flip-card.lean-right .flip-stamp.got, .flip-card.out-right .flip-stamp.got,
+.flip-card.lean-left .flip-stamp.miss, .flip-card.out-left .flip-stamp.miss { opacity: 1; }
+.flip-card.out-right { transform: translateX(130%) rotate(14deg); opacity: 0; }
+.flip-card.out-left { transform: translateX(-130%) rotate(-14deg); opacity: 0; }
+
+.flip-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: var(--s4); opacity: 0.35; transition: opacity 0.2s; }
+.flip-actions.ready { opacity: 1; }
+.flip-btn {
+  min-height: 54px; border-radius: 999px; font-weight: 650; font-size: 16.5px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.flip-btn.miss { color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.flip-btn.got { color: #fff; background: var(--got); }
+[data-theme="dark"] .flip-btn.got { color: #0F0E0D; }
+.flip-btn:active:not(:disabled) { transform: scale(0.96); }
+.flip-tip { text-align: center; margin: 10px 0 0; }
+
+/* End of a round */
+.box-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: var(--s4); }
+.box-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 14px 6px 12px; border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--c) 22%, var(--surface)); box-shadow: inset 0 -4px 0 var(--c), inset 0 0 0 1px var(--card-edge);
+}
+.box-n { font-family: var(--font-head); font-size: 30px; font-weight: 700; }
+.box-name { font-weight: 600; font-size: 14px; }
+.box-what { font-size: 12px; color: var(--text-2); }
+.row .sub .boxbar { align-self: center; }
