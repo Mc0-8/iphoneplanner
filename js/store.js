@@ -25,6 +25,10 @@ const DEFAULT_SETTINGS = {
   finishDayBefore: true,
   badge: false,
   calendarAlert: 10,
+  backupEvery: 7, // days between backup reminders, 0 = off
+  lastBackup: null, // date key of the last backup
+  backupStart: null, // date key the reminder clock starts from when there's never been a backup
+  backupSnoozedUntil: null,
 };
 
 export const REVIEW_STEPS = [1, 3, 7, 14, 30]; // days until the next review
@@ -63,6 +67,10 @@ export async function load() {
       state.lists.push(list);
       await db.put('lists', list);
     }
+    await db.put('settings', state.settings);
+  }
+  if (!state.settings.backupStart) {
+    state.settings.backupStart = todayKey();
     await db.put('settings', state.settings);
   }
   await commit();
@@ -583,10 +591,91 @@ export function exportData() {
   };
 }
 
-export async function importData(json) {
-  if (!json || json.app !== 'planner' || !json.data) throw new Error('This file is not a Planner backup.');
+export const BACKUP_FORMAT = 3;
+
+/** An error whose message is safe to show to the user as it is. */
+export class BackupError extends Error {}
+
+const BACKUP_LABELS = [['tasks', 'task'], ['notes', 'note'], ['subjects', 'subject'], ['topics', 'topic'], ['habits', 'habit'], ['lists', 'list'], ['grades', 'grade']];
+
+/**
+ * Check that a parsed file really is a usable Planner backup before anything is wiped.
+ * Throws BackupError with a readable message, or returns { data, counts, summary, exportedAt }
+ * where data holds one clean array per store.
+ */
+export function validateBackup(json) {
+  const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+  if (!isObj(json) || json.app !== 'planner' || !isObj(json.data)) throw new BackupError('This file is not a Planner backup.');
+  if (json.format !== undefined && (typeof json.format !== 'number' || json.format > BACKUP_FORMAT)) {
+    throw new BackupError('This backup was made by a newer version of Planner. Update the app (Settings → Check for updates), then try again.');
+  }
   const data = {};
-  for (const s of db.STORES) data[s] = Array.isArray(json.data[s]) ? json.data[s] : [];
+  for (const name of db.STORES) {
+    const items = json.data[name];
+    if (items === undefined || items === null) { data[name] = []; continue; }
+    if (!Array.isArray(items)) throw new BackupError(`This backup is damaged (${name} is not a list).`);
+    const ids = new Set();
+    for (const item of items) {
+      const okId = isObj(item) && ((typeof item.id === 'string' && item.id !== '') || Number.isFinite(item.id));
+      if (!okId) throw new BackupError(`This backup is damaged (an item in ${name} has no id).`);
+      if (ids.has(item.id)) throw new BackupError(`This backup is damaged (${name} has the same item twice).`);
+      ids.add(item.id);
+    }
+    data[name] = items;
+  }
+  const appSettings = data.settings.find((x) => x.id === 'app');
+  if (appSettings && appSettings.availability !== undefined) {
+    const a = appSettings.availability;
+    if (!Array.isArray(a) || a.length !== 7 || !a.every((d) => isObj(d) && typeof d.start === 'string' && typeof d.end === 'string')) {
+      throw new BackupError('This backup is damaged (available hours are unreadable).');
+    }
+  }
+  if (data.tasks.some((t) => typeof t.title !== 'string')) throw new BackupError('This backup is damaged (a task has no title).');
+  const content = db.STORES.filter((n) => n !== 'settings' && n !== 'blocks').reduce((sum, n) => sum + data[n].length, 0);
+  if (!content) throw new BackupError('This backup is empty, so restoring it would only delete your data.');
+
+  const counts = Object.fromEntries(db.STORES.map((n) => [n, data[n].length]));
+  const summary = BACKUP_LABELS.filter(([n]) => counts[n]).map(([n, one]) => `${counts[n]} ${one}${counts[n] === 1 ? '' : 's'}`).join(', ');
+  const at = typeof json.exportedAt === 'string' ? new Date(json.exportedAt) : null;
+  return { data, counts, summary, exportedAt: at && !isNaN(at) ? at : null };
+}
+
+/** Replace all data with a backup. The file is checked first; if loading fails afterwards, the old data is put back. */
+export async function importData(json) {
+  const { data } = validateBackup(json);
+  const before = exportData().data;
   await db.replaceAll(data);
-  await load();
+  try {
+    await load();
+  } catch (err) {
+    await db.replaceAll(before);
+    await load();
+    throw new BackupError('That backup could not be loaded, so your data was left as it was.');
+  }
+}
+
+/** Remember that a backup was made, so the reminder starts counting again. */
+export async function markBackedUp() {
+  await updateSettings({ lastBackup: todayKey(), backupSnoozedUntil: null });
+}
+
+export async function snoozeBackup(days = 3) {
+  await updateSettings({ backupSnoozedUntil: addDays(todayKey(), days) });
+}
+
+/** Days since the last backup (or since reminders started, if never), or null if never and no start date. */
+export function daysSinceBackup(settings = state.settings, today = todayKey()) {
+  const from = settings.lastBackup || settings.backupStart;
+  return from ? daysBetween(from, today) : null;
+}
+
+/** Whether to show the "Back up" reminder: it's switched on, enough days have passed, there's something worth keeping, and it isn't snoozed. */
+export function backupDue(s = state, today = todayKey()) {
+  const settings = s.settings;
+  if (!settings.backupEvery) return false;
+  if (settings.backupSnoozedUntil && settings.backupSnoozedUntil > today) return false;
+  const hasData = s.tasks.length + s.notes.length + s.subjects.length + s.topics.length + s.habits.length + s.grades.length > 0;
+  if (!hasData) return false;
+  const days = daysSinceBackup(settings, today);
+  return days !== null && days >= settings.backupEvery;
 }

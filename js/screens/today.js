@@ -6,7 +6,7 @@ import { taskRow } from '../task-ui.js';
 import { dayItems, itemRow, positionNowLine, enableListDrag } from '../block-ui.js';
 import { todayKey, longToday, formatMinutes, fromMin, toMin, nowMin, addDays as addDaysKey, shortDate } from '../dates.js';
 import { windowFor } from '../scheduler.js';
-import { openSettings } from './settings.js';
+import { openSettings, backup } from './settings.js';
 import { runningBar } from './focus.js';
 import { habitsToday } from './habits.js';
 
@@ -49,6 +49,19 @@ export function render(el) {
   if (openBlocks.length && nowMin() >= toMin(state.settings.checkinFrom) && state.settings.lastCheckin !== today) {
     const bar = h(`<button class="checkin">${icon('check', 18)}<span><strong>Check in</strong> Mark what you got done today</span>${icon('caretRight', 16)}</button>`);
     bar.addEventListener('click', openCheckin);
+    el.append(bar);
+  }
+
+  // Backup reminder
+  if (store.backupDue()) {
+    const days = store.daysSinceBackup();
+    const sub = state.settings.lastBackup ? `Last one was ${days} days ago` : 'Keep a copy in case Safari\'s data is cleared';
+    const bar = h(`<div class="checkin backup-nudge">
+      <button type="button" class="nudge-main" data-backup-now>${icon('download', 18)}<span><strong>Back up</strong>${esc(sub)}</span></button>
+      <button type="button" class="icon-button" data-backup-later aria-label="Remind me in 3 days">${icon('x', 18)}</button>
+    </div>`);
+    bar.querySelector('[data-backup-now]').addEventListener('click', () => backup());
+    bar.querySelector('[data-backup-later]').addEventListener('click', () => { store.snoozeBackup(3); toast('I\'ll remind you in 3 days'); });
     el.append(bar);
   }
 
