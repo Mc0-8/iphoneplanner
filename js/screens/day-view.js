@@ -78,7 +78,7 @@ function render(root, key, go, scrollToFocus) {
   const starts = [...blocks.map((b) => b.start), ...fixed.map((c) => c.s), win ? win[0] : 16 * 60];
   const ends = [...blocks.map((b) => b.start + b.duration), ...fixed.map((c) => c.e), win ? win[1] : 21 * 60];
   const g0 = Math.max(0, Math.floor(Math.min(...starts) / 60) * 60 - 60);
-  const g1 = Math.min(1440, Math.ceil(Math.max(...ends) / 60) * 60);
+  const g1 = 1440; // the grid always runs to midnight, so the now line never falls off the end
   const y = (m) => (m - g0) * PX;
 
   const monday = mondayOf(key);

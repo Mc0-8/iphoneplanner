@@ -29,7 +29,7 @@ export function windowFor(settings, daysOff, key) {
   if (isDayOff(daysOff, key)) return null;
   const a = settings.availability[weekday(key)];
   if (!a || !a.on) return null;
-  const s = toMin(a.start), e = toMin(a.end);
+  const s = toMin(a.start), e = a.end === '00:00' ? 1440 : toMin(a.end); // until 00:00 = until midnight
   return e > s ? [s, e] : null;
 }
 

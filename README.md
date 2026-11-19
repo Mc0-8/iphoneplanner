@@ -16,6 +16,7 @@ This build covers **all four phases** of the plan.
 - **0.9:** a fresh look: rounded cards with soft shadows, each subject's colour washed across its timetable blocks, exams, notes and topics, a frosted tab bar with the current tab highlighted, pill-shaped buttons and chips, settings and edit sheets grouped into cards, and a deeper dark mode.
 - **0.10:** a bit of life: screens fade in when you switch tabs, buttons and tabs spring when tapped, the tick circle pops when you finish something, and confetti for big moments (an exam ticked off, a review session done, or everything planned for today finished). Phones set to "Reduce motion" get none of it.
 - **0.10.1:** the red "now" line on Today no longer runs into the last block or the text below it once everything planned for the day is over (e.g. after 21:00).
+- **0.10.2:** the day view (Week → Open day) now always runs to 00:00, so the "now" line no longer slides under the text late in the evening, and available hours can end at 00:00 to allow planning up to midnight.
 
 ## How the planner works
 
