@@ -5,6 +5,7 @@ import { state, flashcards, topicsDue } from '../store.js';
 import { todayKey, shortDate } from '../dates.js';
 import { openReview } from './review.js';
 import { openQuiz, quizCount } from './quiz.js';
+import { openFlashcards, boxBar, countsFor } from './flip.js';
 import { openSearch } from './search.js';
 import { openTaskEditor } from '../task-ui.js';
 import {
@@ -87,7 +88,7 @@ export function render(el) {
           <li class="row"><div class="row-inner">
             <button class="row-body" type="button">
               <span class="title">${esc(t.name)}</span>
-              <span class="sub"><span class="num">${n.length} note${n.length === 1 ? '' : 's'}</span>${cards ? `<span class="num">${cards} card${cards === 1 ? '' : 's'}</span>` : ''}<span>${t.nextReview <= todayKey() ? '<span class="late">Review today</span>' : `Next review ${esc(shortDate(t.nextReview).replace(/^Tomorrow$/, 'tomorrow'))}`}</span></span>
+              <span class="sub"><span class="num">${n.length} note${n.length === 1 ? '' : 's'}</span>${cards ? `<span class="num">${cards} card${cards === 1 ? '' : 's'}</span>${boxBar(countsFor([t.id]))}` : ''}<span>${t.nextReview <= todayKey() ? '<span class="late">Review today</span>' : `Next review ${esc(shortDate(t.nextReview).replace(/^Tomorrow$/, 'tomorrow'))}`}</span></span>
             </button>
             <span class="chev">${icon('caretRight', 16)}</span>
           </div></li>`);
@@ -131,8 +132,13 @@ export function openTopic(id) {
     build(body, close) {
       const draw = () => {
         const notes = state.notes.filter((n) => n.topicId === t.id).sort((a, b) => a.createdAt - b.createdAt);
+        const counts = countsFor([t.id]);
         body.innerHTML = `
           <p class="fineprint" style="margin-top:0">${subject ? `<span class="dot" style="background:${subject.colour}"></span>${esc(subject.name)} · ` : ''}Next review ${esc(shortDate(t.nextReview).toLowerCase())}${t.lastRating ? ` · last rated ${t.lastRating === 'ok' ? 'OK' : t.lastRating}` : ''}</p>
+          ${counts.some(Boolean) ? `<div class="flip-start${subject ? ' tinted' : ''}"${subject ? ` style="--sc:${subject.colour}"` : ''}>
+            <button class="quiz-btn wide" data-flip>Flashcards · ${counts.reduce((a, b) => a + b, 0)} cards</button>
+            ${boxBar(counts, { labels: true })}
+          </div>` : ''}
           <div class="review-tools">
             <button class="text-button primary with-icon" data-review>${icon('check', 18)} Review now</button>
             ${quizCount([t.id]) ? '<button class="text-button primary" data-quiz>Quiz me</button>' : ''}
@@ -143,6 +149,7 @@ export function openTopic(id) {
         const ul = body.querySelector('ul');
         for (const n of notes) ul.append(noteFull(n));
         body.querySelector('[data-review]').addEventListener('click', () => { close(); openReview([t.id]); });
+        body.querySelector('[data-flip]')?.addEventListener('click', () => openFlashcards([t.id]));
         body.querySelector('[data-quiz]')?.addEventListener('click', () => openQuiz([t.id]));
         body.querySelector('[data-add]').addEventListener('click', () => openNoteEditor(null, { subjectId: t.subjectId, topicName: t.name }));
         body.querySelector('[data-del]').addEventListener('click', async () => {

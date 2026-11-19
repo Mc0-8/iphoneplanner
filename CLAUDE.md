@@ -20,13 +20,14 @@ Planner: an offline iPhone study planner (timetable/scheduler, tasks, notes, fla
 | `js/block-ui.js`, `js/drag.js` | Timed day rows, long-press menu, drag/reorder |
 | `js/ics.js` | Calendar (.ics) export: blocks with alerts, deadlines as all-day events with reminders |
 | `js/notes-format.js` | Note text format: light Markdown, task links, flashcards (`splitCards`/`joinCards`/`flashcards`), blanks, quiz items, answer checking |
-| `js/screens/*.js` | One file per screen or sheet: `today`, `week`, `day-view`, `study`, `tasks`, `notes`, `review`, `quiz`, `focus`, `habits`, `stats`, `settings`, `search`, `schedule`, `spare`, `lists` |
+| `js/screens/*.js` | One file per screen or sheet: `today`, `week`, `day-view`, `study`, `tasks`, `notes`, `review`, `quiz`, `flip` (big flip flashcards, box bar), `focus`, `habits`, `stats`, `settings`, `search`, `schedule`, `spare`, `lists` |
 | `css/app.css` | All styles; tokens on `:root` (`--accent`, `--text`, `--text-2`, `--divider`, `--surface`, `--surface-2`, `--shadow`, `--radius`, `--radius-lg`, `--s1..`). Lists (`.rows`) render as rounded cards; "Refresh (0.9)" section at the end overrides older rules |
 | `sw.js` | Offline cache. **New file → add to `FILES`. Any release → bump `CACHE`** (`planner-vN`) |
 
 ## Data formats (keep backwards compatible: old backups must still load)
 - Notes are plain text. Flashcards live at the end of a note as lines: `Q: …` / `A: …`, and fill-in-the-blank `C: sentence with {hidden words}` (a `C:` line only counts if it has `{…}`).
-- Spaced repetition is per **topic** (`store.rateTopic`, steps `REVIEW_STEPS` = 1, 3, 7, 14, 30 days), not per card.
+- Spaced repetition is per **topic** (`store.rateTopic`, steps `REVIEW_STEPS` = 1, 3, 7, 14, 30 days).
+- Flashcard boxes (Leitner, 3 boxes) are per **card**: `topic.boxes = { [cardKey]: { box, seen } }` (missing = box 1). Got it → up one, Missed it → box 1, each full week unseen → down one (`store.cardBox`, `rateCard`). `cardKey` hashes kind + question, so editing a question resets that card. Quiz me does not touch boxes.
 - Tasks: `deadline` (date key), `dateMode` `'due'` (finish by) or `'on'` (that exact day, optional `atTime`), `type` `'task'|'exam'`, `duration` minutes.
 
 ## Conventions

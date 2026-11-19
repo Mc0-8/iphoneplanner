@@ -519,6 +519,47 @@ export async function skipReview(blockId) {
   await commit();
 }
 
+/* ---------- Flashcard boxes (Leitner, 3 boxes, per card) ----------
+   topic.boxes = { [cardKey]: { box: 1..3, seen: 'YYYY-MM-DD' } }. A card with no entry is in box 1.
+   Got it → up one box. Missed it → back to box 1. Each full week not seen → down one box. */
+
+export const BOXES = 3;
+
+/** A card's id: its kind and question text, so editing the question makes it a new card. */
+export function cardKey(c) {
+  const s = `${c.type === 'cloze' ? 'c' : 'q'}:${String(c.q).trim().replace(/\s+/g, ' ').toLowerCase()}`;
+  let hsh = 5381;
+  for (let i = 0; i < s.length; i++) hsh = ((hsh * 33) ^ s.charCodeAt(i)) >>> 0;
+  return hsh.toString(36);
+}
+
+/** The box a card is in today, after the one-box-per-week drop. */
+export function cardBox(topic, card, today = todayKey()) {
+  const e = topic?.boxes?.[cardKey(card)];
+  if (!e) return 1;
+  const weeks = e.seen ? Math.floor(daysBetween(e.seen, today) / 7) : 0;
+  return Math.max(1, Math.min(BOXES, e.box) - Math.max(0, weeks));
+}
+
+/** How many of these cards are in box 1, 2 and 3. */
+export function boxCounts(topic, cards) {
+  const n = [0, 0, 0];
+  for (const c of cards) n[cardBox(topic, c) - 1]++;
+  return n;
+}
+
+/** Got it (right = true) or Missed it. Returns the card's new box. Saves without re-planning. */
+export async function rateCard(topicId, card, right) {
+  const t = state.topics.find((x) => x.id === topicId);
+  if (!t) return 1;
+  const today = todayKey();
+  const box = right ? Math.min(BOXES, cardBox(t, card, today) + 1) : 1;
+  t.boxes = { ...(t.boxes || {}), [cardKey(card)]: { box, seen: today } };
+  await db.put('topics', t);
+  emit();
+  return box;
+}
+
 /** Flashcards from "Q: …" / "A: …" lines (see notes-format.js). */
 export { flashcards } from './notes-format.js';
 
