@@ -113,6 +113,7 @@ async function start() {
   store.subscribe(render);
   render();
   requestPersistence();
+  import('./badge.js').then((m) => { store.subscribe(m.updateBadge); m.updateBadge(); });
 
   setupUpdates();
 }

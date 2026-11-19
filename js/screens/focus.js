@@ -112,6 +112,7 @@ function draw() {
       <p class="focus-kind">${d.dot ? `<span class="dot" style="background:${d.dot}"></span>` : ''}${esc(block.kind === 'study' ? 'Study session' : d.kindLabel || 'Task')}</p>
       <h2 class="focus-title">${esc(d.title)}</h2>
       <p class="muted num">${fromMin(block.start)}–${fromMin(block.start + block.duration)} · ${formatMinutes(block.duration)} planned</p>
+      ${stepsHtml(block)}
       <div class="focus-timer num" data-time>${p.time}</div>
       <p class="focus-label" data-label>${esc(p.label)}</p>
       <div class="bar focus-bar"><span data-bar style="width:${p.progress * 100}%;background:${d.dot || 'var(--accent)'}"></span></div>
@@ -126,6 +127,10 @@ function draw() {
     </div>`;
 
   layer.querySelector('[data-min]').addEventListener('click', () => close());
+  layer.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', async () => {
+    await store.toggleStep(block.taskId, b.dataset.step);
+    draw();
+  }));
   layer.querySelector('[data-pomo]').addEventListener('click', () => {
     const g = getFocus();
     g.pomodoro = !g.pomodoro;
@@ -163,6 +168,15 @@ function draw() {
     close();
     toast(worked >= 1 ? `Done: ${d.title}, ${formatMinutes(Math.round(worked))}` : `Done: ${d.title}`);
   });
+}
+
+/** A task's steps, tickable while you work on it. */
+function stepsHtml(block) {
+  const task = block.kind === 'task' && state.tasks.find((t) => t.id === block.taskId);
+  if (!task || !task.steps?.length) return '';
+  return `<ul class="focus-steps">${task.steps.map((st) => `
+    <li><button type="button" class="step-toggle${st.done ? ' done' : ''}" data-step="${st.id}" aria-pressed="${st.done}">
+      <span class="check small"><span>${icon('check', 12)}</span></span><span>${esc(st.text)}</span></button></li>`).join('')}</ul>`;
 }
 
 function tick() {

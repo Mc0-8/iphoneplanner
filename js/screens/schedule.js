@@ -4,7 +4,7 @@ import { icon } from '../icons.js';
 import { esc, h, openSheet } from '../ui.js';
 import * as store from '../store.js';
 import { state } from '../store.js';
-import { shortDate, todayKey } from '../dates.js';
+import { shortDate, todayKey, daysBetween } from '../dates.js';
 
 // Display order Monday → Sunday; values are JS weekdays (0 = Sunday).
 export const WEEK = [[1, 'Monday'], [2, 'Tuesday'], [3, 'Wednesday'], [4, 'Thursday'], [5, 'Friday'], [6, 'Saturday'], [0, 'Sunday']];
@@ -80,11 +80,11 @@ export function openCommitments() {
   });
 }
 
-export function editCommitment(existing, onDone = () => {}) {
-  const c = existing ? structuredClone(existing) : { id: store.uid(), name: '', weekdays: [1, 2, 3, 4, 5], date: null, start: '08:30', end: '15:30' };
+export function editCommitment(existing, onDone = () => {}, defaults = {}) {
+  const c = existing ? structuredClone(existing) : { id: store.uid(), name: '', weekdays: [1, 2, 3, 4, 5], date: null, start: '08:30', end: '15:30', ...defaults };
   const valid = () => c.name.trim() && c.end > c.start && (c.date || c.weekdays.length);
   openSheet({
-    title: existing ? 'Edit commitment' : 'New commitment',
+    title: existing ? 'Edit commitment' : defaults.date ? 'Busy time' : 'New commitment',
     action: 'Save',
     onAction: async (close) => {
       if (!valid()) return;
@@ -158,16 +158,19 @@ export function openDaysOff() {
     build(body) {
       const draw = () => {
         const weekly = new Set(state.daysOff.filter((d) => d.weekday !== null && d.weekday !== undefined).map((d) => d.weekday));
-        const dates = state.daysOff.filter((d) => d.date && d.date >= todayKey()).sort((a, b) => a.date.localeCompare(b.date));
+        const dates = state.daysOff.filter((d) => (d.date && d.date >= todayKey()) || (d.to && d.to >= todayKey()))
+          .sort((a, b) => (a.date || a.from).localeCompare(b.date || b.from));
         body.innerHTML = `
           <div class="field" style="padding-top:0">
             <span class="label">Every week</span>
             <div class="chips">${WEEK.map(([wd, n]) => `<button type="button" class="chip" data-wd="${wd}" aria-pressed="${weekly.has(wd)}">${n.slice(0, 3)}</button>`).join('')}</div>
           </div>
           <div class="field">
-            <span class="label">Specific dates (holidays, sick days)</span>
+            <span class="label">Specific dates (holidays, sick days)<span class="hint">One day, or fill in "until" for a holiday</span></span>
             <form class="date-wrap" data-form>
-              <input class="input num" type="date" min="${todayKey()}" required aria-label="Date">
+              <input class="input num" type="date" min="${todayKey()}" required aria-label="From" data-from>
+              <span>–</span>
+              <input class="input num" type="date" min="${todayKey()}" aria-label="Until (optional)" data-to>
               <button class="text-button primary" type="submit">Add</button>
             </form>
             <ul class="rows" style="margin-top:8px"></ul>
@@ -180,15 +183,19 @@ export function openDaysOff() {
         }));
         const ul = body.querySelector('ul');
         for (const d of dates) {
-          const row = h(`<li class="list-edit"><span style="flex:1">${esc(shortDate(d.date))} <span class="muted num">${d.date}</span></span><button class="icon-button" aria-label="Remove">${icon('trash', 20)}</button></li>`);
+          const what = d.date ? `${esc(shortDate(d.date))} <span class="muted num">${d.date}</span>`
+            : `${esc(shortDate(d.from))} – ${esc(shortDate(d.to))} <span class="muted num">${daysBetween(d.from, d.to) + 1} days</span>`;
+          const row = h(`<li class="list-edit"><span style="flex:1">${what}</span><button class="icon-button" aria-label="Remove">${icon('trash', 20)}</button></li>`);
           row.querySelector('button').addEventListener('click', async () => { await store.deleteDayOff(d.id); draw(); });
           ul.append(row);
         }
         body.querySelector('[data-form]').addEventListener('submit', async (e) => {
           e.preventDefault();
-          const v = e.target.querySelector('input').value;
-          if (!v || state.daysOff.some((d) => d.date === v)) return;
-          await store.addDayOff({ date: v });
+          const v = e.target.querySelector('[data-from]').value;
+          const to = e.target.querySelector('[data-to]').value;
+          if (!v) return;
+          if (to && to > v) await store.addDayOff({ from: v, to });
+          else if (!state.daysOff.some((d) => d.date === v)) await store.addDayOff({ date: v });
           draw();
         });
       };

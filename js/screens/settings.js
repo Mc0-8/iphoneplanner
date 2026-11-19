@@ -5,8 +5,9 @@ import { state } from '../store.js';
 import { applyTheme } from '../theme.js';
 import { todayKey, formatMinutes } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
+import { badgeSupported, enableBadge, updateBadge } from '../badge.js';
 
-export const VERSION = '0.5.0';
+export const VERSION = '0.6.0';
 
 export function openSettings() {
   openSheet({
@@ -65,6 +66,10 @@ export function openSettings() {
             <span>Pomodoro in focus mode<span class="hint">25 minutes of work, then a 5-minute break</span></span>
             <input id="pomodoro" type="checkbox" class="switch" ${state.settings.pomodoro ? 'checked' : ''}>
           </label>
+          <label class="setting" for="badge">
+            <span>Number on the app icon<span class="hint">${badgeSupported() ? 'Overdue tasks and reviews due. Asks to allow notifications, which iPhone needs for this.' : 'Needs iOS 16.4 or later, with the app added to your Home Screen.'}</span></span>
+            <input id="badge" type="checkbox" class="switch" ${state.settings.badge ? 'checked' : ''} ${badgeSupported() ? '' : 'disabled'}>
+          </label>
           <label class="setting" for="default-duration">
             <span>Default time for a task</span>
             <select id="default-duration" class="select num" style="width:auto">
@@ -104,6 +109,18 @@ export function openSettings() {
       body.querySelector('#daily-cap').addEventListener('change', (e) => store.updateSettings({ dailyCap: Number(e.target.value) }));
       body.querySelector('#day-before').addEventListener('change', (e) => store.updateSettings({ finishDayBefore: e.target.checked }));
       body.querySelector('#pomodoro').addEventListener('change', (e) => store.updateSettings({ pomodoro: e.target.checked }));
+      body.querySelector('#badge').addEventListener('change', async (e) => {
+        if (e.target.checked) {
+          const r = await enableBadge();
+          if (r !== 'ok') {
+            e.target.checked = false;
+            toast(r === 'denied' ? 'Notifications are off for this app. Turn them on in iPhone Settings, then try again.' : 'Your iPhone doesn\'t support this yet.');
+            return;
+          }
+        }
+        await store.updateSettings({ badge: e.target.checked });
+        updateBadge();
+      });
       body.querySelector('#session-length').addEventListener('change', (e) => store.updateSettings({ sessionLength: Number(e.target.value) }));
       body.querySelector('#cutoff').addEventListener('change', (e) => { if (e.target.value) store.updateSettings({ hardCutoff: e.target.value }); });
       const opens = { availability: openAvailability, commitments: openCommitments, daysoff: openDaysOff };
@@ -115,7 +132,7 @@ export function openSettings() {
         const active = state.commitments.filter((c) => !c.date || c.date >= todayKey());
         const n = active.length;
         body.querySelector('[data-hint="commitments"]').textContent = n ? `${n} set: ${[...new Set(active.map((c) => c.name))].slice(0, 3).join(', ')}` : 'School, sport, work shifts…';
-        const off = state.daysOff.filter((d) => d.weekday !== null && d.weekday !== undefined).length + state.daysOff.filter((d) => d.date && d.date >= todayKey()).length;
+        const off = state.daysOff.filter((d) => d.weekday !== null && d.weekday !== undefined).length + state.daysOff.filter((d) => (d.date && d.date >= todayKey()) || (d.to && d.to >= todayKey())).length;
         body.querySelector('[data-hint="daysoff"]').textContent = off ? `${off} set` : 'Holidays, sick days, a rest day';
       };
       hints();

@@ -141,6 +141,7 @@ export function openBlockMenu(block) {
     { id: 'edit', icon: 'pencil', label: block.kind === 'review' ? 'Start review' : isTask ? 'Edit task' : 'Edit subject', show: !!d.onOpen },
     { id: 'pin', icon: block.pinned ? 'unpin' : 'pin', label: block.pinned ? 'Unpin (let the planner move it)' : 'Pin to this time', show: block.status === 'planned' },
     { id: 'tomorrow', icon: 'arrowRight', label: nextLabel, show: block.status === 'planned' && tomorrow <= horizonEnd() },
+    { id: 'calendar', icon: 'calendarPlus', label: 'Add to Calendar', show: block.status === 'planned' && block.date >= todayKey() },
     { id: 'delete', icon: isTask ? 'trash' : 'skip', label: isTask ? 'Delete task' : block.kind === 'review' ? 'Skip this review' : 'Skip this session', show: block.status === 'planned' || isTask, danger: true },
   ].filter((a) => a.show);
 
@@ -156,6 +157,7 @@ export function openBlockMenu(block) {
         if (a === 'edit') d.onOpen();
         if (a === 'focus') import('./screens/focus.js').then((m) => m.openFocus(block.id));
         if (a === 'pin') await store.setPinned(block.id, !block.pinned);
+        if (a === 'calendar') import('./ics.js').then((m) => m.openCalendarExport([block], d.title, 'planner-block.ics'));
         if (a === 'tomorrow') {
           const start = await store.moveBlockToDay(block.id, tomorrow);
           toast(`Moved to ${shortDate(tomorrow).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase())}, ${fromMin(start)}`);

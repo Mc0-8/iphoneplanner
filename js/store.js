@@ -2,7 +2,7 @@
 // After every change the scheduler re-plans the coming weeks (see scheduler.js).
 
 import * as db from './db.js';
-import { todayKey, addDays, weekday, daysBetween } from './dates.js';
+import { todayKey, addDays, weekday, daysBetween, nowMin } from './dates.js';
 import { plan, freeSlot, windowFor } from './scheduler.js';
 
 export const SUBJECT_COLOURS = ['#6B8F71', '#4F6D8F', '#C29A3B', '#8A5A7A', '#3F8A8A', '#7A7368'];
@@ -23,6 +23,8 @@ const DEFAULT_SETTINGS = {
   checkinFrom: '20:00',
   pomodoro: false,
   finishDayBefore: true,
+  badge: false,
+  calendarAlert: 10,
 };
 
 export const REVIEW_STEPS = [1, 3, 7, 14, 30]; // days until the next review
@@ -43,7 +45,7 @@ export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().t
 export async function load() {
   const all = await Promise.all(db.STORES.map((s) => db.getAll(s)));
   const data = Object.fromEntries(db.STORES.map((s, i) => [s, all[i]]));
-  state.tasks = data.tasks.map((t) => ({ steps: [], priority: 'medium', type: 'task', ...t, inbox: !t.listId && !t.deadline && !t.notBefore }));
+  state.tasks = data.tasks.map((t) => ({ steps: [], priority: 'medium', type: 'task', dateMode: 'due', ...t, inbox: !t.listId && !t.deadline && !t.notBefore }));
   state.lists = data.lists.sort((a, b) => a.order - b.order);
   state.subjects = data.subjects.sort((a, b) => a.order - b.order);
   state.commitments = data.commitments;
@@ -78,13 +80,34 @@ export async function commit(opts = {}) {
 
 export const replan = () => commit();
 
+/** A subject on pause gets no new study sessions until its pause ends (pausedUntil = the day it's back). */
+export const isPaused = (s, day = todayKey()) => !!s.paused && (!s.pausedUntil || s.pausedUntil > day);
+
+/** Pause (or resume, with until = false) every subject that has weekly hours. */
+export async function pauseAll(until) {
+  for (const s of state.subjects) {
+    if (until === false) { s.paused = false; s.pausedUntil = null; }
+    else if (s.hoursPerWeek) { s.paused = true; s.pausedUntil = until || null; }
+    await db.put('subjects', s);
+  }
+  await commit();
+}
+
 /** Small automatic tidy-ups that depend on the date. */
 function housekeeping() {
   const today = todayKey();
+  for (const s of state.subjects) {
+    if (s.paused && s.pausedUntil && s.pausedUntil <= today) { s.paused = false; s.pausedUntil = null; db.put('subjects', s); }
+  }
   for (const t of state.tasks) {
     // An exam is over once its day has passed.
     if (t.type === 'exam' && !t.completed && t.deadline && t.deadline < today) {
       t.completed = true; t.completedAt = Date.now(); t.autoCompleted = true;
+      db.put('tasks', t);
+    }
+    // A repeating "on the day" task (gym, practice) whose day passed moves on to its next day.
+    if (t.dateMode === 'on' && !t.completed && t.repeat && t.repeat !== 'none' && t.deadline && t.deadline < today) {
+      t.deadline = nextOccurrence(t.repeat, t.deadline);
       db.put('tasks', t);
     }
   }
@@ -108,6 +131,9 @@ export async function saveTask(task) {
   task.title = task.title.trim();
   if (task.type === 'exam' && !task.deadline) task.deadline = todayKey();
   if (task.type !== 'exam') task.subjectId = null;
+  if (task.type === 'exam' || !task.deadline) task.dateMode = 'due';
+  if (task.dateMode === 'on') { task.notBefore = null; task.notBeforeTime = null; } else task.atTime = null;
+  task.steps = (task.steps || []).filter((x) => x.text && x.text.trim());
   task.inbox = inInbox(task);
   const i = state.tasks.findIndex((t) => t.id === task.id);
   if (i >= 0) state.tasks[i] = task; else state.tasks.push(task);
@@ -136,6 +162,7 @@ async function markTask(task, completed) {
   if (completed && task.repeat && task.repeat !== 'none' && !task.nextId) {
     const deadline = nextOccurrence(task.repeat, task.deadline);
     const next = { ...structuredClone(task), id: uid(), completed: false, completedAt: null, nextId: null, createdAt: Date.now(), deadline };
+    next.steps = (next.steps || []).map((x) => ({ ...x, done: false }));
     // Keep "not before" the same distance before the deadline.
     if (task.notBefore && task.deadline) next.notBefore = addDays(task.notBefore, daysBetween(task.deadline, deadline));
     else next.notBefore = null;
@@ -152,6 +179,16 @@ async function markTask(task, completed) {
     task.nextId = null;
   }
   await db.put('tasks', task);
+}
+
+/** Tick a step inside a task. No re-plan needed. */
+export async function toggleStep(taskId, stepId) {
+  const task = state.tasks.find((t) => t.id === taskId);
+  const step = task?.steps?.find((x) => x.id === stepId);
+  if (!step) return;
+  step.done = !step.done;
+  await db.put('tasks', task);
+  emit();
 }
 
 export async function setCompleted(id, completed) {
@@ -201,6 +238,45 @@ export async function moveBlock(id, date, start) {
   if (!b) return;
   Object.assign(b, { date, start: Math.max(0, Math.min(1440 - b.duration, Math.round(start / 5) * 5)), pinned: true, status: 'planned' });
   await commit();
+}
+
+/**
+ * Change a block's length (drag its bottom edge). Task blocks change the task's total time by the
+ * same amount; study blocks just take more or less of the week's target. Either way it's pinned.
+ */
+export async function resizeBlock(id, duration) {
+  const b = state.blocks.find((x) => x.id === id);
+  if (!b || b.kind === 'review') return;
+  duration = Math.max(15, Math.min(1440 - b.start, Math.round(duration / 5) * 5));
+  const delta = duration - b.duration;
+  if (!delta) return;
+  if (b.kind === 'task') {
+    const t = state.tasks.find((x) => x.id === b.taskId);
+    if (t) { t.duration = Math.max(5, t.duration + delta); await db.put('tasks', t); }
+  }
+  Object.assign(b, { duration, pinned: true });
+  await commit();
+}
+
+/**
+ * "I have some time": put a task or subject at now for `minutes`, pinned. Reuses a block still to come
+ * (so the plan shrinks elsewhere) or adds one. Returns the block id, for the focus timer.
+ */
+export async function startNow({ kind, taskId = null, subjectId = null }, minutes) {
+  const today = todayKey();
+  const now = Math.floor(nowMin() / 5) * 5;
+  minutes = Math.max(5, Math.min(minutes, 1440 - now));
+  const same = (b) => b.kind === kind && b.status === 'planned' && (kind === 'task' ? b.taskId === taskId : b.subjectId === subjectId);
+  const later = state.blocks.filter((b) => same(b) && (b.date > today || b.start >= now))
+    .sort((a, c) => a.date.localeCompare(c.date) || a.start - c.start)[0];
+  let b = later;
+  if (b) Object.assign(b, { date: today, start: now, duration: minutes, pinned: true });
+  else {
+    b = { id: uid(), date: today, start: now, duration: minutes, kind, taskId, subjectId, topicIds: null, pinned: true, status: 'planned' };
+    state.blocks.push(b);
+  }
+  await commit();
+  return b.id;
 }
 
 /** Move to another day: first free time at or after the same time, else the first free time that day. */

@@ -72,7 +72,7 @@ function render(root, key, go, scrollToFocus) {
     p.min += b.duration;
     parts.set(k, p);
   }
-  const due = state.tasks.filter((t) => !t.completed && t.deadline === key);
+  const due = state.tasks.filter((t) => !t.completed && t.deadline === key && t.dateMode !== 'on');
 
   // Grid range
   const starts = [...blocks.map((b) => b.start), ...fixed.map((c) => c.s), win ? win[0] : 16 * 60];
@@ -109,6 +109,7 @@ function render(root, key, go, scrollToFocus) {
       <p class="zcap">${win
         ? `Free ${fromMin(win[0])}–${fromMin(win[1])} · daily limit ${formatMinutes(cap)}${planned > cap ? ' <span class="warn">(over)</span>' : ''}`
         : 'Day off. Nothing new is planned today.'}</p>
+      <button type="button" class="link-button zbusy" data-busy>${icon('clock', 14)} ${key === today ? 'Busy until…' : 'Mark busy time…'}</button>
       ${parts.size ? `<div class="zparts">${[...parts.values()].sort((a, b) => b.min - a.min).map((p) =>
         `<span class="zpart">${p.colour ? `<span class="dot" style="background:${p.colour}"></span>` : ''}${esc(p.name)} <span class="num muted">${formatMinutes(p.min)}</span></span>`).join('')}</div>` : ''}
       ${due.length ? `<div class="zdue"><h3>Due ${key === today ? 'today' : 'this day'}</h3>${due.map((t) =>
@@ -124,7 +125,7 @@ function render(root, key, go, scrollToFocus) {
         <div class="zblocks"></div>
         ${key === today ? `<div class="now-line" style="top:${y(nowMin())}px"><span class="now-label num">${fromMin(nowMin())}</span></div>` : ''}
       </div>
-      <p class="fineprint">Hold a block to move it: drag up or down to change the time, or onto a day above to move it there.</p>
+      <p class="fineprint">Hold a block to move it: drag up or down to change the time, or onto a day above to move it there. Drag a block's bottom edge to make it longer or shorter.</p>
     </div>`;
 
   const body = root.querySelector('.zoom-body');
@@ -132,6 +133,13 @@ function render(root, key, go, scrollToFocus) {
   for (const b of blocks.sort((a, c) => a.start - c.start)) blocksEl.append(blockEl(b, y, key, root));
 
   root.querySelector('[data-close]').addEventListener('click', () => closeDayView());
+  root.querySelector('[data-busy]').addEventListener('click', () => {
+    // A one-off busy time on this day: from now (today) or the start of free time, for an hour.
+    const from = key === today ? Math.ceil(nowMin() / 5) * 5 : win ? win[0] : 16 * 60;
+    const start = Math.min(from, 1440 - 65);
+    import('./schedule.js').then((m) => m.editCommitment(null, () => toast('Busy time added. The plan moved around it.'),
+      { name: 'Busy', date: key, weekdays: [], start: fromMin(start), end: fromMin(Math.min(1435, start + 60)) }));
+  });
   root.querySelectorAll('[data-go]').forEach((btn) => btn.addEventListener('click', () => go(addDays(key, Number(btn.dataset.go)))));
   root.querySelectorAll('.zchip').forEach((c) => c.addEventListener('click', () => go(c.dataset.day)));
 
@@ -162,9 +170,11 @@ function blockEl(b, y, key, root) {
       style="top:${y(b.start)}px;height:${Math.max(18, b.duration * PX - 2)}px;${d.dot ? `--c:${d.dot}` : ''}">
       <span class="zt">${esc(d.title)}${b.pinned ? ` ${icon('pin', 12)}` : ''}</span>
       ${short ? '' : `<span class="zs num" data-time>${fromMin(b.start)}–${fromMin(b.start + b.duration)}${d.kindLabel ? ` · ${esc(d.kindLabel)}` : ''}</span>`}
+      ${b.status === 'planned' && b.kind !== 'review' ? '<span class="zresize" aria-hidden="true"></span>' : ''}
     </button>`);
   el.addEventListener('click', () => openBlockMenu(b));
   if (b.status !== 'planned') return el;
+  if (b.kind !== 'review') enableResize(el, b, y, root);
 
   const body = root.querySelector('.zoom-body');
   const scroll = autoScroller(body);
@@ -218,6 +228,45 @@ function blockEl(b, y, key, root) {
     },
   });
   return el;
+}
+
+/** Drag the bottom edge of a block to change its length (5-minute steps, at least 15 minutes). */
+function enableResize(el, b, y, root) {
+  const handle = el.querySelector('.zresize');
+  const body = root.querySelector('.zoom-body');
+  let y0 = null, s0 = 0, dur = b.duration, label = null, moved = false;
+  const start = (cy) => { y0 = cy; s0 = body.scrollTop; dur = b.duration; moved = false; };
+  const move = (cy) => {
+    if (y0 === null) return;
+    const delta = (cy - y0 + (body.scrollTop - s0)) / PX;
+    if (!moved && Math.abs(cy - y0) < 4) return;
+    if (!moved) { moved = true; el.classList.add('resizing'); label = h('<span class="zlabel num"></span>'); el.append(label); }
+    dur = Math.max(15, Math.min(1440 - b.start, Math.round((b.duration + delta) / 5) * 5));
+    el.style.height = `${Math.max(18, dur * PX - 2)}px`;
+    label.textContent = `${fromMin(b.start)}–${fromMin(b.start + dur)} · ${formatMinutes(dur)}`;
+  };
+  const end = async () => {
+    if (y0 === null) return;
+    y0 = null;
+    el.classList.remove('resizing');
+    label?.remove();
+    if (!moved || dur === b.duration) { el.style.height = `${Math.max(18, b.duration * PX - 2)}px`; return; }
+    await store.resizeBlock(b.id, dur);
+    toast(b.kind === 'task' ? `Now ${formatMinutes(dur)}. The task's total time changed to match.` : `Now ${formatMinutes(dur)} and pinned`);
+  };
+  // Touch: starts straight away on the handle (no hold), and doesn't scroll or open the menu.
+  handle.addEventListener('touchstart', (e) => { e.stopPropagation(); start(e.touches[0].clientY); }, { passive: true });
+  handle.addEventListener('touchmove', (e) => { e.stopPropagation(); e.preventDefault(); move(e.touches[0].clientY); }, { passive: false });
+  handle.addEventListener('touchend', (e) => { e.stopPropagation(); end(); });
+  handle.addEventListener('touchcancel', (e) => { e.stopPropagation(); end(); });
+  // Mouse, for testing on a computer
+  handle.addEventListener('mousedown', (e) => {
+    e.stopPropagation(); e.preventDefault(); start(e.clientY);
+    const mm = (ev) => move(ev.clientY);
+    const mu = () => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); end(); };
+    window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu);
+  });
+  handle.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); });
 }
 
 function overlap([ws, we], ranges) {

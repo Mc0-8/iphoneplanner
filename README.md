@@ -9,11 +9,14 @@ This build covers **all four phases** of the plan.
 
 - **Phase 3:** hold and drag blocks to reorder them or move them to another day (they get pinned), a long-press menu (edit, pin/unpin, move to tomorrow, delete or skip), "Re-spread" for a week, swipe left to delete a task, and a zoomed day view from the Week tab.
 - **Phase 4:** notes with topics and Q:/A: flashcards, spaced-repetition reviews (1, 3, 7, 14, 30 days) planned as 15-minute blocks, focus mode with a timer and optional Pomodoro, planned vs actual time, habits, grades with a "what do I need" calculator, stats, search, repeating tasks, and a Sunday summary of the week ahead.
+- **0.6:** "Due by" vs "On the day" dates (gym, practice: exactly that day, optional set time), steps inside a task, quick add by typing ("essay fri 2h #school !"), "I have some time" suggestions (⚡ on Today), add blocks or a week to Calendar (.ics with alerts), "Busy until…" and drag-to-resize in the zoomed day, pausing study (per subject or all), holiday date ranges, and a number on the app icon.
 
 ## How the planner works
 
 - Plans 5 weeks ahead. Things already planned **stay put** unless they have to move; new work goes into free space on the least busy day.
-- Tasks are finished **the day before they're due** where possible (Settings → "Finish tasks the day before they're due").
+- **Due by** tasks (homework) are finished **the day before they're due** where possible (Settings → "Finish tasks the day before they're due").
+- **On the day** tasks (gym, practice, appointments) are planned on exactly that day, never earlier. With a time set, they sit at that time. A missed repeating one moves on to its next day.
+- Paused subjects get no study sessions until they're back on; when a pause ends mid-week, only a fair share of that week's hours is planned.
 - Reviews go on their due day; overdue tasks are planned as soon as possible.
 - **Re-spread** (Week tab) rebalances one week from scratch.
 

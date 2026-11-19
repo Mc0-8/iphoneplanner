@@ -2,7 +2,7 @@ import { icon } from '../icons.js';
 import { esc, h, openSheet, toast } from '../ui.js';
 import * as store from '../store.js';
 import { state, SUBJECT_COLOURS } from '../store.js';
-import { todayKey, addDays, mondayOf, formatMinutes } from '../dates.js';
+import { todayKey, addDays, mondayOf, formatMinutes, shortDate } from '../dates.js';
 import { habitsSection } from './habits.js';
 import { statsSection, gradesField } from './stats.js';
 
@@ -35,7 +35,8 @@ export function render(el) {
     const planned = inWeek.filter((b) => b.status === 'planned').reduce((n, b) => n + b.duration, 0);
     return { s, done, planned, ...weekTarget(s, monday) };
   });
-  const left = rows.reduce((n, r) => n + Math.max(0, r.minutes - r.done), 0);
+  const left = rows.filter((r) => !store.isPaused(r.s)).reduce((n, r) => n + Math.max(0, r.minutes - r.done), 0);
+  const paused = state.subjects.filter((s) => store.isPaused(s));
   const st = streak();
 
   el.innerHTML = `
@@ -44,7 +45,9 @@ export function render(el) {
         <h1>Study</h1>
         <p class="meta">${state.subjects.length ? `<span class="num">${formatMinutes(left)}</span> of study left this week` : 'Weekly study hours per subject'}</p>
       </div>
+      ${state.subjects.length ? `<div class="header-actions"><button class="text-button with-icon" data-pause>${icon('pause', 18)} ${paused.length ? 'Paused' : 'Pause'}</button></div>` : ''}
     </header>`;
+  el.querySelector('[data-pause]')?.addEventListener('click', openPauseAll);
 
   if (!state.subjects.length) {
     el.append(h('<p class="empty">Add your subjects and how many hours a week each one needs. The planner spreads the sessions over your week, so no day gets crowded.</p>'));
@@ -63,7 +66,7 @@ export function render(el) {
     week.querySelector('ul').append(h(`
       <li class="progress-row">
         <div class="progress-top">
-          <span><span class="dot" style="background:${r.s.colour}"></span>${esc(r.s.name)}${r.boosted ? ' <span class="badge">Exam soon</span>' : ''}</span>
+          <span><span class="dot" style="background:${r.s.colour}"></span>${esc(r.s.name)}${r.boosted ? ' <span class="badge">Exam soon</span>' : ''}${store.isPaused(r.s) ? ' <span class="badge muted-badge">Paused</span>' : ''}</span>
           <span class="num muted">${formatMinutes(r.done)} of ${formatMinutes(r.minutes)}</span>
         </div>
         <div class="bar" role="img" aria-label="${formatMinutes(r.done)} done, ${formatMinutes(r.planned)} planned">
@@ -83,7 +86,7 @@ export function render(el) {
       <li class="row"><div class="row-inner">
         <button class="row-body" type="button">
           <span class="title"><span class="dot" style="background:${s.colour}"></span>${esc(s.name)}</span>
-          <span class="sub"><span class="num">${formatMinutes(Math.round(s.hoursPerWeek * 60))} a week</span>${s.hard ? '<span>Hard: planned early</span>' : ''}</span>
+          <span class="sub"><span class="num">${formatMinutes(Math.round(s.hoursPerWeek * 60))} a week</span>${s.hard ? '<span>Hard: planned early</span>' : ''}${store.isPaused(s) ? `<span class="late">${pauseText(s)}</span>` : ''}</span>
         </button>
         <span class="chev">${icon('caretRight', 16)}</span>
       </div></li>`);
@@ -93,6 +96,49 @@ export function render(el) {
   el.append(list);
   el.append(habitsSection());
   el.append(statsSection());
+}
+
+const pauseText = (s) => (s.pausedUntil ? `Paused, back ${shortDate(s.pausedUntil).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase())}` : 'Paused');
+
+/** Pause all study for a while: holidays, a week off, exam week. */
+function openPauseAll() {
+  const any = state.subjects.some((s) => store.isPaused(s));
+  let until = addDays(todayKey(), 7);
+  openSheet({
+    title: 'Pause study',
+    build(body, close) {
+      body.innerHTML = `
+        <p style="margin-top:0">No new study sessions are planned while study is paused. Tasks and reviews carry on.</p>
+        <div class="field">
+          <span class="label">Back on</span>
+          <div class="chips" style="margin-bottom:8px">
+            <button type="button" class="chip" data-d="7" aria-pressed="true">In 1 week</button>
+            <button type="button" class="chip" data-d="14">In 2 weeks</button>
+            <button type="button" class="chip" data-d="0">When I turn it back on</button>
+          </div>
+          <input class="input num" type="date" min="${addDays(todayKey(), 1)}" value="${until}" data-until aria-label="Back on">
+        </div>
+        <div class="menu">
+          <button type="button" class="menu-item" data-go>${icon('pause', 20)}<span>Pause all subjects</span></button>
+          ${any ? `<button type="button" class="menu-item" data-resume>${icon('arrowRight', 20)}<span>Resume all now</span></button>` : ''}
+        </div>`;
+      const input = body.querySelector('[data-until]');
+      body.querySelectorAll('[data-d]').forEach((b) => b.addEventListener('click', () => {
+        const d = Number(b.dataset.d);
+        until = d ? addDays(todayKey(), d) : null;
+        input.value = until || '';
+        input.hidden = !d;
+        body.querySelectorAll('[data-d]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      }));
+      input.addEventListener('change', () => { until = input.value || null; body.querySelectorAll('[data-d]').forEach((x) => x.setAttribute('aria-pressed', false)); });
+      body.querySelector('[data-go]').addEventListener('click', async () => {
+        close();
+        await store.pauseAll(until);
+        toast(until ? `Study paused, back ${shortDate(until).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase())}` : 'Study paused until you turn it back on', { undo: () => store.pauseAll(false) });
+      });
+      body.querySelector('[data-resume]')?.addEventListener('click', async () => { close(); await store.pauseAll(false); toast('Study is back on'); });
+    },
+  });
 }
 
 export function openSubjectEditor(existing) {
@@ -127,6 +173,16 @@ export function openSubjectEditor(existing) {
           <span>Hard subject<span class="hint">Planned before ${esc(state.settings.hardCutoff)} when possible</span></span>
           <input type="checkbox" class="switch" ${subject.hard ? 'checked' : ''} data-hard>
         </label>
+        <label class="field field-row">
+          <span>Pause this subject<span class="hint">No sessions planned until the date below, or until you turn this off</span></span>
+          <input type="checkbox" class="switch" ${store.isPaused(subject) ? 'checked' : ''} data-paused>
+        </label>
+        <div class="field" data-pause-until ${store.isPaused(subject) ? '' : 'hidden'} style="padding-top:0">
+          <div class="date-wrap">
+            <span class="muted" style="flex:none">Back on</span>
+            <input class="input num" type="date" min="${addDays(todayKey(), 1)}" value="${subject.pausedUntil || ''}" aria-label="Back on (optional)">
+          </div>
+        </div>
         <div data-grades></div>
         ${isNew ? '' : `<div class="delete-row"><button type="button" class="text-button danger with-icon" data-delete>${icon('trash', 18)} Delete subject</button></div>`}`;
       if (!isNew) body.querySelector('[data-grades]').append(gradesField(subject.id));
@@ -150,6 +206,12 @@ export function openSubjectEditor(existing) {
         body.querySelectorAll('.swatch').forEach((x) => x.setAttribute('aria-pressed', x === b));
       }));
       body.querySelector('[data-hard]').addEventListener('change', (e) => { subject.hard = e.target.checked; });
+      body.querySelector('[data-paused]').addEventListener('change', (e) => {
+        subject.paused = e.target.checked;
+        if (!subject.paused) subject.pausedUntil = null;
+        body.querySelector('[data-pause-until]').hidden = !subject.paused;
+      });
+      body.querySelector('[data-pause-until] input').addEventListener('change', (e) => { subject.pausedUntil = e.target.value || null; });
       body.querySelector('[data-delete]')?.addEventListener('click', async () => {
         close();
         const removed = await store.deleteSubject(subject.id);

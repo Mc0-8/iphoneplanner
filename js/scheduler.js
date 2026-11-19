@@ -20,7 +20,8 @@ export function horizonEnd(today = todayKey()) {
 
 export function isDayOff(daysOff, key) {
   const wd = weekday(key);
-  return daysOff.some((d) => (d.date && d.date === key) || (d.weekday !== null && d.weekday !== undefined && d.weekday === wd));
+  return daysOff.some((d) => (d.date && d.date === key) || (d.from && d.to && key >= d.from && key <= d.to) ||
+    (d.weekday !== null && d.weekday !== undefined && d.weekday === wd));
 }
 
 /** Available window for a day as [start, end] minutes, or null. */
@@ -73,10 +74,23 @@ export function plan(data, now = new Date(), opts = {}) {
   const taskById = new Map(tasks.map((t) => [t.id, t]));
   const subjectById = new Map(subjects.map((s) => [s.id, s]));
 
+  // "On the day" tasks with a set time sit exactly there, like an appointment.
+  const fixedTask = new Map();
+  for (const t of tasks) {
+    if (t.completed || t.inbox || t.type === 'exam' || t.dateMode !== 'on' || !t.atTime || !t.deadline) continue;
+    if (t.deadline < today || t.deadline > end) continue;
+    fixedTask.set(t.id, t);
+  }
+
   // 1. Sort existing blocks: kept as they are (history, pinned, already started) or "previous" spots.
   const kept = [];
   const previous = [];
+  const fixedIds = new Map();
   for (const b of data.blocks) {
+    if (b.kind === 'task' && fixedTask.has(b.taskId) && b.status === 'planned' && !b.pinned) {
+      if (!fixedIds.has(b.taskId)) fixedIds.set(b.taskId, b.id); // reuse its id
+      continue;
+    }
     if (b.kind === 'task') {
       const t = taskById.get(b.taskId);
       if (!t) continue;                                   // task deleted
@@ -90,6 +104,13 @@ export function plan(data, now = new Date(), opts = {}) {
     if (b.pinned) { kept.push(b); continue; }
     if (b.date === today && b.start < nowM) { kept.push(b); continue; } // already started: frozen
     previous.push(b);
+  }
+  for (const t of fixedTask.values()) {
+    // Already done, or moved by hand (a pinned block still to come): leave it be.
+    const done = kept.some((b) => b.kind === 'task' && b.taskId === t.id && (b.status === 'done' || (b.pinned && b.status === 'planned')));
+    if (done) continue;
+    kept.push({ id: fixedIds.get(t.id) || uid(), date: t.deadline, start: toMin(t.atTime), duration: t.duration, kind: 'task',
+      taskId: t.id, subjectId: null, topicIds: null, pinned: false, status: 'planned', fixed: true });
   }
   const fresh = opts.fresh;
   const inFresh = (b) => fresh && b.date >= fresh.from && b.date <= fresh.to;
@@ -154,16 +175,18 @@ export function plan(data, now = new Date(), opts = {}) {
   const longestWindow = Math.max(0, ...days.map((k) => { const w = windowFor(settings, daysOff, k); return w ? w[1] - w[0] : 0; }));
   const maxPiece = Math.max(MIN_PIECE, Math.min(cap, longestWindow || cap));
   for (const t of tasks) {
-    if (t.completed || t.type === 'exam' || t.inbox) continue;
+    if (t.completed || t.type === 'exam' || t.inbox || fixedTask.has(t.id)) continue;
+    const onDay = t.dateMode === 'on' && t.deadline;
+    if (onDay && (t.deadline < today || t.deadline > end)) continue; // that day has passed (or is too far off)
     const used = kept.filter((b) => b.kind === 'task' && b.taskId === t.id && b.status !== 'missed')
       .reduce((s, b) => s + b.duration, 0);
     let remaining = t.duration - used;
     if (remaining < MIN_PIECE / 3) continue;
     remaining = Math.max(remaining, MIN_PIECE);
-    const overdue = t.deadline && t.deadline < today;
+    const overdue = !onDay && t.deadline && t.deadline < today;
     // Overdue work is planned as soon as possible on any day, not only today.
     const latest = t.deadline && !overdue ? (t.deadline > end ? end : t.deadline) : end;
-    const earliest = t.notBefore && t.notBefore > today ? t.notBefore : today;
+    const earliest = onDay ? t.deadline : t.notBefore && t.notBefore > today ? t.notBefore : today;
     if (earliest > end) continue; // starts after the planning window
     const pieces = t.duration > Math.min(SPLIT_ABOVE, maxPiece) ? splitMinutes(remaining, Math.min(CHUNK, maxPiece), maxPiece) : [remaining];
     pieces.forEach((min) => items.push({
@@ -172,7 +195,7 @@ export function plan(data, now = new Date(), opts = {}) {
       notBefore: t.notBefore || null, notBeforeMin: t.notBeforeTime ? toMin(t.notBeforeTime) : 0,
       group: t.deadline ? 1 : 3,
       sortDate: t.deadline || '9999', prio: { high: 0, medium: 1, low: 2 }[t.priority] ?? 1,
-      title: t.title, deadline: t.deadline,
+      title: t.title, deadline: t.deadline, onDay: !!onDay,
     }));
   }
 
@@ -184,22 +207,25 @@ export function plan(data, now = new Date(), opts = {}) {
     const first = wk < today ? today : wk;
     for (const s of subjects) {
       if (!s.hoursPerWeek) continue;
+      // Paused: nothing until the pause ends (or at all, if it has no end date).
+      if (s.paused && (!s.pausedUntil || s.pausedUntil > wkEnd)) continue;
+      const startDay = s.paused && s.pausedUntil > first ? s.pausedUntil : first;
       const boosted = exams.some((e) => e.subjectId === s.id && e.deadline >= wk && addDays(e.deadline, -14) <= wkEnd);
       const target = Math.round((s.hoursPerWeek * 60 * (boosted ? 1.5 : 1)) / 15) * 15;
       const used = kept.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.status !== 'missed' && b.date >= wk && b.date <= wkEnd)
         .reduce((sum, b) => sum + b.duration, 0);
       let remaining = target - used;
-      // This week: only a fair share for the days that are left (plus anything actually missed),
-      // so starting mid-week or adding a subject doesn't cram a whole week into a few days.
-      if (wk === mondayOf(today)) {
+      // Part of a week (it's already mid-week, or a pause ends mid-week): only a fair share for the days
+      // that are left, plus anything actually missed, so a whole week isn't crammed into a few days.
+      if (startDay > wk) {
         let total = 0, left = 0;
         for (let k = wk; k <= wkEnd; k = addDays(k, 1)) {
           if (!windowFor(settings, daysOff, k)) continue;
           total++;
-          if (k >= today) left++;
+          if (k >= startDay) left++;
         }
-        const missed = data.blocks.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.date >= wk && b.date < today && b.status !== 'done')
-          .reduce((sum, b) => sum + b.duration, 0);
+        const missed = wk === mondayOf(today) ? data.blocks.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.date >= wk && b.date < today && b.status !== 'done')
+          .reduce((sum, b) => sum + b.duration, 0) : 0;
         const fromToday = kept.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.status !== 'missed' && b.date >= today && b.date <= wkEnd)
           .reduce((sum, b) => sum + b.duration, 0);
         const share = total ? Math.round(((target * left) / total + missed) / 15) * 15 : 0;
@@ -209,7 +235,7 @@ export function plan(data, now = new Date(), opts = {}) {
       const pieces = splitMinutes(remaining, Math.min(settings.sessionLength, maxPiece), maxPiece);
       pieces.forEach((min, i) => studyItems.push({
         kind: 'study', subjectId: s.id, key: 'sub:' + s.id, duration: min,
-        first, last: wkEnd > end ? end : wkEnd,
+        first: startDay, last: wkEnd > end ? end : wkEnd,
         group: boosted ? 0 : 2, round: i, order: s.order ?? 0, hard: !!s.hard,
         title: s.name, week: wk,
       }));
@@ -326,7 +352,7 @@ export function plan(data, now = new Date(), opts = {}) {
 
   for (const item of items) {
     // "Finish the day before": a task due on a later day avoids its due day when it can.
-    const due = item.kind === 'task' && finishEarly && item.deadline && item.deadline > item.first ? item.deadline : null;
+    const due = item.kind === 'task' && !item.onDay && finishEarly && item.deadline && item.deadline > item.first ? item.deadline : null;
     // Reviews belong on their due day; the next two days are only a fallback.
     if (item.kind === 'review' && item.prev && item.prev.date !== item.first) {
       const onDay = (dayInfo.get(item.prev.date).reserved.delete(item.prev), bestNew(item, item.first));

@@ -5,8 +5,16 @@ import { esc, h, openSheet, toast, enableSwipe } from './ui.js';
 import * as store from './store.js';
 import { state } from './store.js';
 import { todayKey, addDays, shortDate, formatMinutes, daysBetween } from './dates.js';
+import { parseQuickAdd, titleKeeping } from './parse.js';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
+const lower = (w) => w.replace(/^(Today|Tomorrow|Yesterday)$/, (x) => x.toLowerCase());
+
+/** "Fri 18:00", "today", "tomorrow 07:30" for an "on the day" task. */
+export function onDayLabel(task) {
+  const d = shortDate(task.deadline);
+  return `${/^(Today|Tomorrow)$/.test(d) ? d : 'On ' + d}${task.atTime ? ' ' + task.atTime : ''}`;
+}
 
 /** "Tasks usually take you 25% longer than you plan" — from the focus timer's logs. */
 function estimateHint() {
@@ -23,14 +31,19 @@ export function taskRow(task, { showList = true, hideToday = false } = {}) {
   const bits = [];
   if (task.type === 'exam') {
     bits.push(`<span class="tag exam">${icon('exam', 14)}Exam · ${esc(shortDate(task.deadline))}</span>`);
+  } else if (task.dateMode === 'on' && task.deadline) {
+    const missed = !task.completed && task.deadline < today;
+    if (missed) bits.push(`<span class="late">Missed · ${esc(shortDate(task.deadline))}</span>`);
+    else if (!(hideToday && task.deadline === today && !task.atTime)) bits.push(`<span class="num">${esc(onDayLabel(task))}</span>`);
   } else if (task.deadline && !(hideToday && task.deadline === today)) {
     const late = !task.completed && task.deadline < today;
     bits.push(late
       ? `<span class="late">Overdue · ${esc(shortDate(task.deadline))}</span>`
-      : `<span>Due ${esc(shortDate(task.deadline).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase()))}</span>`);
+      : `<span>Due ${esc(lower(shortDate(task.deadline)))}</span>`);
   }
   if (task.type !== 'exam') bits.push(`<span class="num">${formatMinutes(task.duration)}</span>`);
-  if (task.notBefore && task.notBefore >= today && !task.completed) bits.push(`<span>From ${esc(shortDate(task.notBefore).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase()))}${task.notBeforeTime ? ` ${task.notBeforeTime}` : ''}</span>`);
+  if (task.steps?.length) bits.push(`<span class="num">${task.steps.filter((x) => x.done).length}/${task.steps.length} steps</span>`);
+  if (task.notBefore && task.notBefore >= today && !task.completed && task.dateMode !== 'on') bits.push(`<span>From ${esc(lower(shortDate(task.notBefore)))}${task.notBeforeTime ? ` ${task.notBeforeTime}` : ''}</span>`);
   if (task.repeat && task.repeat !== 'none') bits.push(`<span>${{ daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly' }[task.repeat]}</span>`);
   const list = showList && store.listName(task.listId);
   if (list) bits.push(`<span>${esc(list)}</span>`);
@@ -76,7 +89,14 @@ function complete(task) {
 export function openTaskEditor(existing, defaults = {}) {
   const isNew = !existing;
   const task = isNew ? store.newTask(defaults) : structuredClone(existing);
-  const hasExtras = !isNew && (task.type === 'exam' || task.priority !== 'medium' || task.listId || task.notes || task.notBefore);
+  task.dateMode = task.dateMode || 'due';
+  task.steps = task.steps || [];
+  const hasExtras = !isNew && (task.type === 'exam' || task.priority !== 'medium' || task.listId || task.notes || task.notBefore || task.steps.length || (task.repeat && task.repeat !== 'none'));
+  // Quick add: words like "fri 2h #school" in a new task's title fill in the fields.
+  const QUICK = ['deadline', 'dateMode', 'atTime', 'duration', 'repeat', 'listId', 'priority'];
+  const base = Object.fromEntries(QUICK.map((k) => [k, task[k] ?? null]));
+  const manual = new Set();   // fields the person set by hand: typing no longer changes them
+  let quickOn = isNew, parsed = null;
 
   openSheet({
     title: isNew ? (task.type === 'exam' ? 'New exam' : 'New task') : 'Edit task',
@@ -85,29 +105,41 @@ export function openTaskEditor(existing, defaults = {}) {
     onAction: save,
     build(body, close, saveBtn) {
       body.innerHTML = `
-        <textarea class="title-input" rows="1" placeholder="What needs doing?" enterkeyhint="done" aria-label="Title">${esc(task.title)}</textarea>
+        <textarea class="title-input" rows="1" placeholder="${isNew ? 'What needs doing? e.g. essay fri 2h' : 'What needs doing?'}" enterkeyhint="done" aria-label="Title">${esc(task.title)}</textarea>
+        <p class="understood" data-understood hidden><span></span> <button type="button" class="text-button" data-keep>Keep as typed</button></p>
 
         <div class="field" data-field="duration">
           <span class="label">Time needed</span>
-          <div class="chips">${DURATIONS.map((m) => `<button type="button" class="chip" data-min="${m}" aria-pressed="${task.duration === m}">${formatMinutes(m)}</button>`).join('')}</div>
+          <div class="chips" data-durations></div>
           ${estimateHint()}
         </div>
 
         <div class="field">
-          <span class="label" data-date-label>${task.type === 'exam' ? 'Exam date' : 'Deadline'}</span>
+          <span class="label" data-date-label></span>
+          <div class="segmented date-mode" data-seg="dateMode" ${task.type === 'exam' ? 'hidden' : ''}>
+            <button type="button" data-v="due">Due by</button>
+            <button type="button" data-v="on">On the day</button>
+          </div>
           <div class="chips" style="margin-bottom:8px">
             <button type="button" class="chip" data-quick="0">Today</button>
             <button type="button" class="chip" data-quick="1">Tomorrow</button>
             <button type="button" class="chip" data-quick="7">In a week</button>
           </div>
           <div class="date-wrap">
-            <input class="input num" type="date" value="${task.deadline || ''}" aria-label="Date">
+            <input class="input num" type="date" value="${task.deadline || ''}" aria-label="Date" data-date>
+            <input class="input num" type="time" step="300" value="${task.atTime || ''}" data-at-time aria-label="Time (optional)" style="flex:0 0 120px">
             <button type="button" class="text-button date-clear" data-clear>Clear</button>
           </div>
+          <p class="fineprint" data-mode-hint style="margin:8px 0 0"></p>
         </div>
 
         <button type="button" class="more-toggle" aria-expanded="${hasExtras}">${icon('caretRight', 16)} More options</button>
         <div class="more" ${hasExtras ? '' : 'hidden'}>
+          <div class="field" data-field="steps" ${task.type === 'exam' ? 'hidden' : ''}>
+            <span class="label">Steps<span class="hint">Smaller bits to tick off as you go</span></span>
+            <ul class="steps" data-steps></ul>
+            <input class="input" data-step-add placeholder="Add a step" enterkeyhint="done" aria-label="Add a step">
+          </div>
           <div class="field">
             <span class="label">Type</span>
             <div class="segmented" data-seg="type">
@@ -162,26 +194,119 @@ export function openTaskEditor(existing, defaults = {}) {
       const title = body.querySelector('.title-input');
       const grow = () => { title.style.height = 'auto'; title.style.height = title.scrollHeight + 'px'; };
       const sync = () => { saveBtn.disabled = !title.value.trim(); };
-      title.addEventListener('input', () => { task.title = title.value.replace(/\n/g, ' '); grow(); sync(); });
+      title.addEventListener('input', () => { task.title = title.value.replace(/\n/g, ' '); grow(); quick(); sync(); });
       title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (title.value.trim()) save(close); } });
-      sync(); requestAnimationFrame(grow);
+      requestAnimationFrame(grow);
       if (isNew) setTimeout(() => title.focus(), 60);
 
       // Duration
-      body.querySelectorAll('[data-min]').forEach((b) => b.addEventListener('click', () => {
-        task.duration = Number(b.dataset.min);
-        body.querySelectorAll('[data-min]').forEach((x) => x.setAttribute('aria-pressed', x === b));
-      }));
+      const durWrap = body.querySelector('[data-durations]');
+      const drawDurations = () => {
+        const list = DURATIONS.includes(task.duration) ? DURATIONS : [...DURATIONS, task.duration].sort((a, b) => a - b);
+        durWrap.innerHTML = list.map((m) => `<button type="button" class="chip" data-min="${m}" aria-pressed="${task.duration === m}">${formatMinutes(m)}</button>`).join('');
+      };
+      durWrap.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-min]');
+        if (!b) return;
+        task.duration = Number(b.dataset.min); manual.add('duration'); drawDurations();
+      });
 
-      // Deadline
-      const dateInput = body.querySelector('input[type=date]');
-      const setDate = (key) => { task.deadline = key || null; dateInput.value = key || ''; markQuick(); };
-      const markQuick = () => body.querySelectorAll('[data-quick]').forEach((b) =>
-        b.setAttribute('aria-pressed', !!task.deadline && daysBetween(todayKey(), task.deadline) === Number(b.dataset.quick)));
+      // Date: "Due by" (homework: done before the day) or "On the day" (gym, practice: exactly that day)
+      const dateInput = body.querySelector('[data-date]');
+      const timeInput = body.querySelector('[data-at-time]');
+      const setDate = (key, byHand = true) => { task.deadline = key || null; if (!key) task.atTime = null; if (byHand) manual.add('deadline'); drawDate(); };
+      const drawDate = () => {
+        const on = task.dateMode === 'on' && task.type !== 'exam';
+        dateInput.value = task.deadline || '';
+        timeInput.value = task.atTime || '';
+        timeInput.hidden = !on;
+        body.querySelector('[data-date-label]').textContent = task.type === 'exam' ? 'Exam date' : on ? 'Day' : 'Deadline';
+        body.querySelectorAll('[data-seg="dateMode"] button').forEach((x) => x.setAttribute('aria-pressed', x.dataset.v === task.dateMode));
+        body.querySelectorAll('[data-quick]').forEach((b) =>
+          b.setAttribute('aria-pressed', !!task.deadline && daysBetween(todayKey(), task.deadline) === Number(b.dataset.quick)));
+        const hint = body.querySelector('[data-mode-hint]');
+        hint.hidden = task.type === 'exam' || !task.deadline;
+        hint.textContent = on
+          ? (task.atTime ? 'Fixed at this time, like an appointment.' : 'Planned on exactly this day, never earlier. Add a time to fix it there.')
+          : state.settings.finishDayBefore ? 'Planned before it\'s due: the day before, if there\'s room.' : 'Planned on or before this day.';
+        const nb = body.querySelector('[data-field="notbefore"]');
+        if (nb) nb.hidden = task.type === 'exam' || on;
+      };
       body.querySelectorAll('[data-quick]').forEach((b) => b.addEventListener('click', () => setDate(addDays(todayKey(), Number(b.dataset.quick)))));
       dateInput.addEventListener('change', () => setDate(dateInput.value));
+      timeInput.addEventListener('change', () => {
+        task.atTime = timeInput.value || null; manual.add('atTime');
+        if (task.atTime && !task.deadline) setDate(todayKey());
+        drawDate();
+      });
       body.querySelector('[data-clear]').addEventListener('click', () => setDate(null));
-      markQuick();
+
+      // Steps
+      const stepsUl = body.querySelector('[data-steps]');
+      const drawSteps = () => {
+        stepsUl.innerHTML = task.steps.map((st) => `
+          <li class="step${st.done ? ' done' : ''}" data-step="${st.id}">
+            <button type="button" class="check small" aria-label="${st.done ? 'Mark step as not done' : 'Mark step as done'}"><span>${icon('check', 12)}</span></button>
+            <input class="step-text" value="${esc(st.text)}" aria-label="Step">
+            <button type="button" class="icon-button" data-rm aria-label="Remove step">${icon('x', 16)}</button>
+          </li>`).join('');
+      };
+      stepsUl.addEventListener('click', (e) => {
+        const li = e.target.closest('[data-step]');
+        if (!li) return;
+        const st = task.steps.find((x) => x.id === li.dataset.step);
+        if (e.target.closest('.check')) { st.done = !st.done; drawSteps(); }
+        if (e.target.closest('[data-rm]')) { task.steps = task.steps.filter((x) => x !== st); drawSteps(); }
+      });
+      stepsUl.addEventListener('input', (e) => {
+        const li = e.target.closest('[data-step]');
+        if (li) task.steps.find((x) => x.id === li.dataset.step).text = e.target.value;
+      });
+      const stepAdd = body.querySelector('[data-step-add]');
+      const addStep = () => {
+        const text = stepAdd.value.trim();
+        if (!text) return;
+        task.steps.push({ id: store.uid(), text, done: false });
+        stepAdd.value = '';
+        drawSteps();
+      };
+      stepAdd.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addStep(); } });
+      stepAdd.addEventListener('blur', addStep);
+
+      // Quick add
+      const understood = body.querySelector('[data-understood]');
+      const quick = () => {
+        if (!quickOn) return;
+        parsed = parseQuickAdd(title.value, state.lists);
+        for (const k of QUICK) {
+          if (manual.has(k)) continue;
+          task[k] = k in parsed.fields ? parsed.fields[k] : base[k];
+        }
+        if (!task.dateMode) task.dateMode = 'due';
+        if (task.dateMode !== 'on') task.atTime = null;
+        if (task.repeat && task.repeat !== 'none' && !task.deadline) task.deadline = todayKey();
+        const f = parsed.fields, parts = [];
+        if (f.deadline && !manual.has('deadline')) parts.push(task.dateMode === 'on' ? onDayLabel(task).replace(/^On /, 'on ').replace(/^(Today|Tomorrow)/, (w) => w.toLowerCase()) : `due ${lower(shortDate(task.deadline))}`);
+        else if (f.atTime && !manual.has('atTime')) parts.push(`at ${f.atTime}`);
+        if (f.duration && !manual.has('duration')) parts.push(formatMinutes(f.duration));
+        if (f.repeat && !manual.has('repeat')) parts.push({ daily: 'repeats daily', weekly: 'repeats weekly', weekdays: 'repeats on weekdays' }[f.repeat]);
+        if (f.listId && !manual.has('listId')) parts.push(parsed.labels[0]);
+        if (f.priority && !manual.has('priority')) parts.push(`${f.priority} priority`);
+        understood.hidden = !parts.length;
+        understood.querySelector('span').textContent = parts.length ? `Understood: ${parts.join(' · ')}` : '';
+        refresh();
+      };
+      body.querySelector('[data-keep]').addEventListener('click', () => {
+        quickOn = false; parsed = null;
+        for (const k of QUICK) if (!manual.has(k)) task[k] = base[k];
+        understood.hidden = true;
+        refresh(); sync(); title.focus();
+      });
+      const refresh = () => {
+        drawDurations(); drawDate();
+        for (const k of ['priority', 'repeat']) body.querySelectorAll(`[data-seg="${k}"] button`).forEach((x) => x.setAttribute('aria-pressed', x.dataset.v === (task[k] || (k === 'repeat' ? 'none' : 'medium'))));
+        const ls = body.querySelector('#list-select'); if (ls) ls.value = task.listId || '';
+      };
 
       // More options
       const moreBtn = body.querySelector('.more-toggle');
@@ -192,18 +317,23 @@ export function openTaskEditor(existing, defaults = {}) {
         moreBtn.setAttribute('aria-expanded', open);
       });
       body.querySelectorAll('[data-seg]').forEach((seg) => seg.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
-        task[seg.dataset.seg] = b.dataset.v;
+        const k = seg.dataset.seg;
+        task[k] = b.dataset.v;
+        manual.add(k);
         seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
-        if (seg.dataset.seg === 'type') {
-          body.querySelector('[data-date-label]').textContent = task.type === 'exam' ? 'Exam date' : 'Deadline';
+        if (k === 'type') {
           body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
           body.querySelector('[data-field="subject"]').hidden = task.type !== 'exam' || !state.subjects.length;
           body.querySelector('[data-field="repeat"]').hidden = task.type === 'exam';
-          body.querySelector('[data-field="notbefore"]').hidden = task.type === 'exam';
+          body.querySelector('[data-field="steps"]').hidden = task.type === 'exam';
+          body.querySelector('[data-seg="dateMode"]').hidden = task.type === 'exam';
         }
-        if (seg.dataset.seg === 'repeat' && task.repeat !== 'none' && !task.deadline) setDate(todayKey());
+        if (k === 'dateMode') { manual.add('atTime'); if (task.dateMode !== 'on') task.atTime = null; }
+        if (k === 'repeat' && task.repeat !== 'none' && !task.deadline) setDate(todayKey());
+        drawDate();
       })));
       body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
+      drawDurations(); drawDate(); drawSteps(); sync();
       const nbDate = body.querySelector('[data-nb-date]'), nbTime = body.querySelector('[data-nb-time]');
       const nbWarn = () => { body.querySelector('[data-nb-warn]').hidden = !(task.notBefore && task.deadline && task.notBefore > task.deadline); };
       nbWarn();
@@ -216,7 +346,7 @@ export function openTaskEditor(existing, defaults = {}) {
       });
       body.querySelector('[data-nb-clear]').addEventListener('click', () => { task.notBefore = null; task.notBeforeTime = null; nbDate.value = ''; nbTime.value = ''; });
       body.querySelector('#subject-select').addEventListener('change', (e) => { task.subjectId = e.target.value || null; });
-      body.querySelector('#list-select').addEventListener('change', (e) => { task.listId = e.target.value || null; });
+      body.querySelector('#list-select').addEventListener('change', (e) => { task.listId = e.target.value || null; manual.add('listId'); });
       body.querySelector('#notes').addEventListener('input', (e) => { task.notes = e.target.value; });
 
       // Delete
@@ -229,7 +359,12 @@ export function openTaskEditor(existing, defaults = {}) {
   });
 
   async function save(close) {
+    if (quickOn && parsed) {
+      const t = titleKeeping(parsed, [...manual]);
+      if (t.trim()) task.title = t;
+    }
     if (!task.title.trim()) return;
+    task.steps = task.steps.filter((x) => x.text.trim());
     close();
     await store.saveTask(task);
     // A task without a list or date isn't planned: say where it went instead of letting it vanish.

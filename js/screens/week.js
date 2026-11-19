@@ -29,6 +29,7 @@ export function render(el) {
         <p class="meta" data-range></p>
       </div>
       <div class="header-actions">
+        <button class="icon-button" data-cal aria-label="Add this week to Calendar">${icon('calendarPlus', 22)}</button>
         <button class="text-button" data-replan>Re-spread</button>
       </div>
     </header>
@@ -46,6 +47,13 @@ export function render(el) {
     await store.respreadWeek(wk, addDays(wk, 6));
     if (sig() === before) toast('Already spread as evenly as your free time allows');
     else toast(pinned ? `Re-spread ${weekRange(wk)}. ${pinned} pinned block${pinned === 1 ? '' : 's'} unpinned.` : `Re-spread ${weekRange(wk)}`);
+  });
+
+  el.querySelector('[data-cal]').addEventListener('click', () => {
+    const wk = addDays(first, page * 7);
+    const blocks = state.blocks.filter((b) => b.status === 'planned' && b.date >= wk && b.date <= addDays(wk, 6) && b.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+    import('../ics.js').then((m) => m.openCalendarExport(blocks, weekRange(wk), `planner-${wk}.ics`));
   });
 
   const summary = weekSummary(today);

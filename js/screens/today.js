@@ -34,10 +34,12 @@ export function render(el) {
         <p class="meta">${meta}</p>
       </div>
       <div class="header-actions">
+        <button class="icon-button" data-spare aria-label="I have some time">${icon('lightning', 24)}</button>
         <button class="icon-button" data-settings aria-label="Settings">${icon('gear', 24)}</button>
       </div>
     </header>`;
   el.querySelector('[data-settings]').addEventListener('click', openSettings);
+  el.querySelector('[data-spare]').addEventListener('click', () => import('./spare.js').then((m) => m.openSpareTime()));
 
   const running = runningBar();
   if (running) el.append(running);

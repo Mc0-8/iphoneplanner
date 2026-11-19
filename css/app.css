@@ -906,3 +906,32 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; paddi
 .link-button.open-day { white-space: nowrap; flex: none; }
 .agenda .section-head h2 { min-width: 0; }
 .zstats strong { font-size: clamp(16px, 5.2vw, 20px); }
+
+/* 0.6: date modes, quick add, steps */
+.date-mode { margin-bottom: 8px; }
+.understood { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: -4px 0 12px; font-size: 13.5px; color: var(--accent); }
+.understood span { min-width: 0; }
+.understood .text-button { flex: none; font-size: 13.5px; color: var(--text-2); min-height: 0; padding: 0; }
+.check.small { width: 32px; height: 32px; margin: 0; }
+.check.small span { width: 18px; height: 18px; }
+.steps { list-style: none; margin: 0 0 6px; padding: 0; }
+.step { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--divider); }
+.step-text { flex: 1; min-width: 0; border: 0; background: none; font: inherit; font-size: 15px; color: var(--text); padding: 10px 0; }
+.step-text:focus { outline: none; }
+.step .icon-button { width: 36px; height: 36px; color: var(--text-2); }
+.step.done .check span, .step-toggle.done .check span { background: var(--accent); border-color: var(--accent); }
+.step.done .check span .icon, .step-toggle.done .check span .icon { opacity: 1; transform: scale(1); }
+.step.done .step-text { color: var(--text-2); text-decoration: line-through; }
+.focus-steps { list-style: none; margin: 18px 0 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+.step-toggle { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-size: 15px; padding: 2px 0; }
+.step-toggle.done > span:last-child { color: var(--text-2); text-decoration: line-through; }
+.spare-item { align-items: center; }
+.spare-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.spare-text .fineprint { margin: 0; }
+.zbusy { display: inline-flex; align-items: center; gap: 6px; margin: -4px 0 14px; }
+.zresize { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; touch-action: none; cursor: ns-resize; }
+.zresize::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 22px; height: 3px; margin-left: -11px; border-radius: 2px; background: currentColor; opacity: 0.3; }
+.zblock.resizing { transition: none; z-index: 3; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14); }
+.muted-badge { color: var(--text-2); }
+.header-actions .text-button { white-space: nowrap; }
+.header > div:first-child { min-width: 0; }
