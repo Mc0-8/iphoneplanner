@@ -731,6 +731,7 @@ body.zoom-open .toast { bottom: calc(var(--safe-bottom) + 24px); }
   transition: top 120ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 .zblock.study {
+  background: var(--surface); border-color: var(--c); /* fallback for iOS < 16.2 */
   background: color-mix(in srgb, var(--c) 16%, var(--bg));
   border-color: color-mix(in srgb, var(--c) 60%, var(--bg));
 }
@@ -891,6 +892,7 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; paddi
 .summary-list .warn { color: var(--accent); }
 
 /* Timed habits and one-off busy times */
+.zfixed.zhabit { background: var(--accent-soft); border-style: dashed; border-color: var(--accent); }
 .zfixed.zhabit { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); border-style: dashed; border-color: color-mix(in srgb, var(--accent) 40%, var(--bg)); color: var(--text); }
 .habit-row .sub span:first-child { color: var(--accent); }
 .date-wrap .input { min-width: 0; }
