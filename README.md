@@ -12,6 +12,7 @@ This build covers **all four phases** of the plan.
 - **0.6:** "Due by" vs "On the day" dates (gym, practice: exactly that day, optional set time), steps inside a task, quick add by typing ("essay fri 2h #school !"), "I have some time" suggestions (⚡ on Today), add blocks or a week to Calendar (.ics with alerts), "Busy until…" and drag-to-resize in the zoomed day, pausing study (per subject or all), holiday date ranges, and a number on the app icon.
 - **0.6.1:** backup reminders on Today (weekly by default, Settings → Backup reminder) and a safer restore that checks the file and shows what's in it before replacing anything.
 - **0.7:** formatted notes (bold, italic, highlight, headings, lists, checklists you can tick, tappable web links) with a formatting bar and a View preview, links from a note to a task (the task shows its linked notes), and a flashcard editor with a question and answer box per card. Notes are still saved as plain text with Q:/A: lines, so old notes and backups keep working.
+- **0.8:** deadlines and exams go into the Calendar export as all-day events with a reminder (that day, 1 or 2 days, or a week before), an "won't fit" warning when a task needs more time than is free before its deadline (banner on Today, tag on the task, heads-up on save), fill-in-the-blank flashcards (`C: The capital of France is {Paris}`), and a quiz mode (type the answer or multiple choice) whose score suggests the review rating.
 
 ## How the planner works
 
@@ -53,7 +54,7 @@ Then open http://localhost:8000.
 | `js/scheduler.js` | The scheduling rules (pure function, no UI) |
 | `js/block-ui.js` | Rows for the timed day list, the now line, long-press menu, drag to reorder |
 | `js/drag.js` | Long-press and drag handling (touch and mouse) |
-| `js/screens/notes.js`, `review.js` | Notes tab, note editor and card editor, topics, the review flow |
+| `js/screens/notes.js`, `review.js`, `quiz.js` | Notes tab, note editor and card editor, topics, the review flow, quiz mode |
 | `js/notes-format.js` | Note formatting, task links and splitting a note into text and flashcards |
 | `js/screens/focus.js` | Focus mode and timer |
 | `js/screens/habits.js`, `stats.js` | Habits, stats and grades |

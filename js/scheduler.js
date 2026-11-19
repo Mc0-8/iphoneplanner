@@ -57,7 +57,7 @@ export function commitmentsOn(commitments, key, habits = []) {
  * day that fits. `opts.fresh = {from, to}` ignores existing spots in that date range (Re-spread).
  *
  * @param data {tasks, subjects, commitments, daysOff, habits, topics, blocks, settings}
- * @returns {blocks, overflow, weeks}
+ * @returns {blocks, overflow, weeks, atRisk}
  */
 export function plan(data, now = new Date(), opts = {}) {
   const { tasks, subjects, commitments, daysOff, settings } = data;
@@ -397,7 +397,23 @@ export function plan(data, now = new Date(), opts = {}) {
     weeks.push({ monday: wk, free, planned, overflowMinutes: over.reduce((s, o) => s + o.duration, 0), overflow: over });
   }
 
-  return { blocks: all, overflow, weeks };
+  return { blocks: all, overflow, weeks, atRisk: atRisk(overflow, end) };
+}
+
+/**
+ * Tasks that don't fit in the free time before their deadline ("overbooked"), most urgent first.
+ * Overdue tasks and deadlines past the planning window are left out: those aren't a fit problem yet.
+ * @returns [{ taskId, title, deadline, minutes }] minutes = how much doesn't fit
+ */
+export function atRisk(overflow, end) {
+  const by = new Map();
+  for (const o of overflow) {
+    if (o.kind !== 'task' || o.asap || !o.deadline || o.deadline > end) continue;
+    const r = by.get(o.taskId) || { taskId: o.taskId, title: o.title, deadline: o.deadline, minutes: 0 };
+    r.minutes += o.duration;
+    by.set(o.taskId, r);
+  }
+  return [...by.values()].sort((a, b) => a.deadline.localeCompare(b.deadline) || b.minutes - a.minutes);
 }
 
 const daysBetweenKeys = (a, b) => Math.round((Date.UTC(...a.split('-').map((n, i) => (i === 1 ? n - 1 : +n))) - Date.UTC(...b.split('-').map((n, i) => (i === 1 ? n - 1 : +n)))) / 86400000);

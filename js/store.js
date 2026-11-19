@@ -25,6 +25,8 @@ const DEFAULT_SETTINGS = {
   finishDayBefore: true,
   badge: false,
   calendarAlert: 10,
+  deadlineAlert: 1,     // calendar export: remind this many days before a deadline (-1 none)
+  quizMode: 'type',     // 'type' or 'choice'
   backupEvery: 7, // days between backup reminders, 0 = off
   lastBackup: null, // date key of the last backup
   backupStart: null, // date key the reminder clock starts from when there's never been a backup
@@ -37,7 +39,7 @@ export const state = {
   tasks: [], lists: [], subjects: [], commitments: [], daysOff: [], blocks: [],
   notes: [], topics: [], habits: [], grades: [], timeLogs: [],
   settings: structuredClone(DEFAULT_SETTINGS),
-  plan: { overflow: [], weeks: [] },
+  plan: { overflow: [], weeks: [], atRisk: [] },
 };
 
 const listeners = new Set();
@@ -81,12 +83,15 @@ export async function commit(opts = {}) {
   housekeeping();
   const result = plan(state, new Date(), opts);
   state.blocks = result.blocks;
-  state.plan = { overflow: result.overflow, weeks: result.weeks };
+  state.plan = { overflow: result.overflow, weeks: result.weeks, atRisk: result.atRisk };
   emit();
   await db.replaceStore('blocks', state.blocks);
 }
 
 export const replan = () => commit();
+
+/** How much of a task doesn't fit before its deadline, or null when it fits. */
+export const shortfall = (taskId) => state.plan.atRisk?.find((r) => r.taskId === taskId) || null;
 
 /** A subject on pause gets no new study sessions until its pause ends (pausedUntil = the day it's back). */
 export const isPaused = (s, day = todayKey()) => !!s.paused && (!s.pausedUntil || s.pausedUntil > day);

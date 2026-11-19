@@ -2,7 +2,7 @@ import { icon } from '../icons.js';
 import { esc, h, openSheet, toast } from '../ui.js';
 import * as store from '../store.js';
 import { state, sortTasks } from '../store.js';
-import { taskRow } from '../task-ui.js';
+import { taskRow, openOverbooked } from '../task-ui.js';
 import { dayItems, itemRow, positionNowLine, enableListDrag } from '../block-ui.js';
 import { todayKey, longToday, formatMinutes, fromMin, toMin, nowMin, addDays as addDaysKey, shortDate } from '../dates.js';
 import { windowFor } from '../scheduler.js';
@@ -62,6 +62,23 @@ export function render(el) {
     </div>`);
     bar.querySelector('[data-backup-now]').addEventListener('click', () => backup());
     bar.querySelector('[data-backup-later]').addEventListener('click', () => { store.snoozeBackup(3); toast('I\'ll remind you in 3 days'); });
+    el.append(bar);
+  }
+
+  // Overbooked: tasks that don't fit before their deadline. Hidden for today once dismissed, until the list changes.
+  const risk = state.plan.atRisk || [];
+  const riskSig = `${today}|${risk.map((r) => r.taskId + ':' + r.minutes).join(',')}`;
+  if (risk.length && state.settings.overbookedSeen !== riskSig) {
+    const r = risk[0];
+    const head = risk.length === 1 ? `${r.title} won't fit` : `${risk.length} tasks won't fit`;
+    const sub = risk.length === 1 ? `${formatMinutes(r.minutes)} short before ${shortDate(r.deadline).toLowerCase()}`
+      : `${formatMinutes(risk.reduce((s, x) => s + x.minutes, 0))} short in total. First: ${r.title}`;
+    const bar = h(`<div class="checkin backup-nudge overbooked">
+      <button type="button" class="nudge-main" data-risk>${icon('clock', 18)}<span><strong>${esc(head)}</strong>${esc(sub)}</span></button>
+      <button type="button" class="icon-button" data-risk-hide aria-label="Hide for today">${icon('x', 18)}</button>
+    </div>`);
+    bar.querySelector('[data-risk]').addEventListener('click', openOverbooked);
+    bar.querySelector('[data-risk-hide]').addEventListener('click', () => store.updateSettings({ overbookedSeen: riskSig }));
     el.append(bar);
   }
 
