@@ -1234,3 +1234,45 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; paddi
 .zblock.study { border-width: 0 0 0 4px; border-color: var(--c); }
 .zstats { background: var(--surface); border-bottom: 0; border-radius: var(--radius-lg); padding: 12px 14px; box-shadow: inset 0 0 0 1px var(--card-edge); }
 .zchip.on { border-color: var(--accent); }
+
+/* =========================================================
+   Motion (0.10): tab fade, bouncy buttons, tick pop, confetti.
+   All of it is switched off by the reduced-motion rule above
+   (and confetti checks it in celebrate.js).
+   ========================================================= */
+
+:root { --spring: cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* New tab: fade in with a slight lift */
+.screen.tab-enter { animation: tab-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes tab-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* Tab bar: icons squish when pressed, the active pill pops */
+.tab .icon { transition: background 180ms ease, transform 260ms var(--spring); }
+.tab:active .icon { transform: scale(0.86); transition-duration: 80ms; }
+.tab.tab-pop .icon { animation: pill-pop 360ms var(--spring); }
+@keyframes pill-pop { 0% { transform: scale(0.8); } 100% { transform: scale(1); } }
+
+/* Main buttons: press in, spring back */
+.add-button, .quiz-btn, .review-start, .checkin, .backup-nudge .nudge-main {
+  transition: transform 300ms var(--spring), filter 120ms ease, box-shadow 200ms ease;
+}
+.add-button:active, .quiz-btn:active { transform: scale(0.93); transition-duration: 90ms; }
+.review-start:active, .checkin:active { transform: scale(0.97); transition-duration: 90ms; }
+.add-button:not([hidden]) { animation: add-in 360ms var(--spring); }
+@keyframes add-in { from { transform: scale(0.6); opacity: 0; } }
+
+/* Tick: the circle pops and a ring ripples out */
+.check span { position: relative; }
+.check span.pop { animation: tick-pop 420ms var(--spring); }
+.check span.pop::after {
+  content: ""; position: absolute; inset: -2px;
+  border-radius: 50%; border: 2px solid var(--accent);
+  animation: tick-ring 500ms ease-out forwards;
+  pointer-events: none;
+}
+@keyframes tick-pop { 0% { transform: scale(1); } 35% { transform: scale(0.75); } 100% { transform: scale(1); } }
+@keyframes tick-ring { from { transform: scale(1); opacity: 0.9; } to { transform: scale(2.2); opacity: 0; } }
+
+/* Confetti layer */
+.confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 90; pointer-events: none; }

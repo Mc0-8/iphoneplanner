@@ -14,6 +14,7 @@ Planner: an offline iPhone study planner (timetable/scheduler, tasks, notes, fla
 | `js/store.js` | `state` (tasks, subjects, topics, notes, blocks, settings…), all saving via `db.js`, `commit()` re-plans after every change. `DEFAULT_SETTINGS` lists every setting. Backup/restore + `validateBackup` |
 | `js/scheduler.js` | Pure `plan(data, now)` over 5 weeks → `{blocks, overflow, weeks, atRisk}`. `atRisk` = tasks that don't fit before their deadline |
 | `js/dates.js` | Date keys (`YYYY-MM-DD`), minutes-of-day helpers, `shortDate`, `formatMinutes` |
+| `js/celebrate.js` | Confetti (`confetti()`), tick pop, listens for the store's `planner:celebrate` event (fired by `celebrateIfBig` in `store.js`) |
 | `js/ui.js` | `h()`, `esc()`, `openSheet()` (stackable bottom sheets), `toast()`, swipe |
 | `js/task-ui.js` | Task row, add/edit task sheet, "Not enough time" (overbooked) sheet |
 | `js/block-ui.js`, `js/drag.js` | Timed day rows, long-press menu, drag/reorder |
