@@ -7,6 +7,7 @@ import { state, flashcards, REVIEW_STEPS } from '../store.js';
 import { splitCards, joinCards, toggleTodo, renderInline } from '../notes-format.js';
 import { noteBodyHTML, wireNoteBody, clozeHTML } from './notes.js';
 import { openQuiz } from './quiz.js';
+import { confetti } from '../celebrate.js';
 import { shortDate, addDays, todayKey } from '../dates.js';
 
 export function openReview(topicIds) {
@@ -87,6 +88,7 @@ export function openReview(topicIds) {
           if (i < queue.length) { draw(); body.scrollTop = 0; return; }
           close();
           toast(`Reviewed ${rated.length} topic${rated.length === 1 ? '' : 's'}`);
+          confetti();
         }));
       };
       draw();

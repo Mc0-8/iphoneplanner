@@ -12,6 +12,7 @@ import * as week from './screens/week.js';
 import * as study from './screens/study.js';
 import * as notes from './screens/notes.js';
 import { closeDayView } from './screens/day-view.js';
+import * as celebrate from './celebrate.js';
 
 const TABS = [
   { id: 'today', label: 'Today', icon: 'today', screen: today },
@@ -62,7 +63,16 @@ function checkDay() {
   return false;
 }
 setInterval(checkDay, 60000);
-window.addEventListener('hashchange', () => { closeDayView(true); window.scrollTo(0, 0); if (!checkDay()) render(); });
+window.addEventListener('hashchange', () => { closeDayView(true); window.scrollTo(0, 0); if (!checkDay()) render(); animateTab(); });
+
+// Moving between tabs: the new screen fades in with a slight lift, and the tab's pill pops.
+function animateTab() {
+  screenEl.classList.remove('tab-enter'); void screenEl.offsetWidth; screenEl.classList.add('tab-enter');
+  tabbar.querySelector('[aria-current="page"]')?.classList.add('tab-pop');
+}
+screenEl.addEventListener('animationend', (e) => { if (e.target === screenEl) screenEl.classList.remove('tab-enter'); });
+celebrate.listen();
+celebrate.enableTickPop();
 
 // Re-plan when the app comes back to the front (time has moved on, maybe a new day).
 document.addEventListener('visibilitychange', () => {

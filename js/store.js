@@ -207,8 +207,23 @@ export async function toggleStep(taskId, stepId) {
 export async function setCompleted(id, completed) {
   const task = state.tasks.find((t) => t.id === id);
   if (!task) return;
+  const was = task.completed;
   await markTask(task, completed);
   await commit();
+  if (completed && !was) celebrateIfBig(task);
+}
+
+/* Big moments get confetti (see celebrate.js): an exam ticked off, or the last thing planned for today done. */
+let clearedDay = null;
+function celebrateIfBig(task) {
+  const today = todayKey();
+  const todays = state.blocks.filter((b) => b.date === today);
+  const cleared = todays.length > 0 && todays.every((b) => b.status !== 'planned') && todays.some((b) => b.status === 'done');
+  const exam = task?.type === 'exam' && task.completed;
+  if (cleared && clearedDay !== today) clearedDay = today;
+  else if (!exam) return;
+  const colour = exam ? subjectById(task.subjectId)?.colour : null;
+  window.dispatchEvent(new CustomEvent('planner:celebrate', { detail: { reason: exam ? 'exam' : 'today', colours: colour ? [colour] : null } }));
 }
 
 export async function deleteTask(id) {
@@ -235,14 +250,17 @@ export async function setBlockStatus(id, status) {
   const block = state.blocks.find((b) => b.id === id);
   if (!block) return;
   block.status = status;
+  let task = null, was = false;
   if (block.kind === 'task') {
-    const task = state.tasks.find((t) => t.id === block.taskId);
+    task = state.tasks.find((t) => t.id === block.taskId);
     if (task) {
+      was = task.completed;
       const doneMin = state.blocks.filter((b) => b.taskId === task.id && b.status === 'done').reduce((s, b) => s + b.duration, 0);
       await markTask(task, doneMin >= task.duration - 5);
     }
   }
   await commit();
+  if (status === 'done') celebrateIfBig(task && !was ? task : null);
 }
 
 /** Move a block by hand: it gets pinned there, so the planner works around it. */

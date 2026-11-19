@@ -3,7 +3,7 @@
 // the app downloads it in the background and offers "Update" (also Settings → Check for updates).
 // Bump CACHE when the list of files changes.
 
-const CACHE = 'planner-v12';
+const CACHE = 'planner-v13';
 const FILES = [
   './',
   'index.html',
@@ -17,6 +17,7 @@ const FILES = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'js/app.js',
+  'js/celebrate.js',
   'js/badge.js',
   'js/ics.js',
   'js/parse.js',
