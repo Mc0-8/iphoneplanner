@@ -2,10 +2,13 @@
 //   **bold**  *italic*  ==highlight==  # Heading  - bullet  1. numbered  - [ ] checklist
 //   [Essay draft](task:abc123) links to a task, web links are tappable.
 //   Q: question / A: answer lines are flashcards (kept together at the end of the note by the card editor).
+//   C: sentence with {hidden words} is a fill-in-the-blank card.
 
 import { esc } from './ui.js';
 
 const CARD_LINE = /^\s*([QA])\s*[:.)]\s*(.*)$/i;
+const CLOZE_LINE = /^\s*C\s*:\s*(.*\{[^{}\n]+\}.*)$/i; // needs a {blank}, so "c) item" lists stay text
+const BLANK = /\{([^{}\n]+)\}/g;
 
 /**
  * Splits a note into its body text and its flashcards.
@@ -17,12 +20,14 @@ export function splitCards(text = '') {
   const cards = [];
   let open = null; // the card whose answer may continue on the next line
   for (const line of String(text).split('\n')) {
+    const c = line.match(CLOZE_LINE);
+    if (c) { cards.push({ type: 'cloze', q: c[1].trim(), a: '' }); open = null; continue; }
     const m = line.match(CARD_LINE);
     if (m) {
       const isQ = m[1].toUpperCase() === 'Q';
       const last = cards.at(-1);
       if (isQ) { cards.push({ q: m[2].trim(), a: '' }); open = null; continue; }
-      if (last && !last.a && !open) { last.a = m[2].trim(); open = last; continue; }
+      if (last && last.type !== 'cloze' && !last.a && !open) { last.a = m[2].trim(); open = last; continue; }
       // An answer with no question stays in the body.
     } else if (open && line.trim()) {
       open.a += ' ' + line.trim();
@@ -38,14 +43,69 @@ export function splitCards(text = '') {
 export function joinCards(body, cards) {
   const one = (s) => String(s || '').replace(/\s*\n\s*/g, ' ').trim();
   const lines = cards
-    .map((c) => ({ q: one(c.q), a: one(c.a) }))
+    .map((c) => ({ type: c.type, q: one(c.q), a: one(c.a) }))
     .filter((c) => c.q || c.a)
-    .map((c) => `Q: ${c.q}${c.a ? `\nA: ${c.a}` : ''}`);
+    // A fill-in-the-blank card without a {blank} yet is saved as a plain question, so nothing is lost.
+    .map((c) => (c.type === 'cloze' && blanks(c.q).length ? `C: ${c.q}` : `Q: ${c.q}${c.a ? `\nA: ${c.a}` : ''}`));
   return [String(body || '').trim(), lines.join('\n\n')].filter(Boolean).join('\n\n');
 }
 
-/** Cards with both a question and an answer, for reviews and counts. */
-export const flashcards = (text) => splitCards(text).cards.filter((c) => c.q && c.a);
+/** Cards that can be asked: Q/A cards with both sides, and fill-in-the-blank cards. */
+export const flashcards = (text) => splitCards(text).cards.filter((c) => (c.type === 'cloze' ? blanks(c.q).length : c.q && c.a));
+
+/** The hidden words of a fill-in-the-blank sentence, in order. */
+export const blanks = (q = '') => [...String(q).matchAll(BLANK)].map((m) => m[1].trim());
+
+/**
+ * A fill-in-the-blank sentence with its blanks swapped out. `fn(word, i)` returns the text for blank i.
+ * The other parts are passed through `outside` (e.g. inline rendering).
+ */
+export function mapBlanks(q, fn, outside = (s) => s) {
+  let out = '', last = 0, i = 0;
+  for (const m of String(q).matchAll(BLANK)) {
+    out += outside(q.slice(last, m.index)) + fn(m[1].trim(), i++);
+    last = m.index + m[0].length;
+  }
+  return out + outside(q.slice(last));
+}
+
+/**
+ * Quiz questions from cards: one per Q/A card, one per blank of a fill-in-the-blank card
+ * (the other blanks of that sentence are shown filled in).
+ * @returns [{ prompt, answer, cloze, i }] where prompt is plain text with "____" for the blank
+ */
+export function quizItems(cards) {
+  const out = [];
+  for (const c of cards) {
+    if (c.type !== 'cloze') { if (c.q && c.a) out.push({ prompt: c.q, answer: c.a, cloze: false }); continue; }
+    blanks(c.q).forEach((answer, i) => out.push({ prompt: mapBlanks(c.q, (w, j) => (j === i ? '____' : w)), answer, cloze: true }));
+  }
+  return out;
+}
+
+/** Loose comparison for typed answers: case, accents, punctuation, spacing and a leading "the/a/an" don't matter. */
+export function normalizeAnswer(s = '') {
+  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim().replace(/^(the|a|an) /, '');
+}
+
+/** 'right', 'close' (one small typo per ~6 letters) or 'wrong'. */
+export function checkAnswer(typed, answer) {
+  const a = normalizeAnswer(typed), b = normalizeAnswer(answer);
+  if (!a) return 'wrong';
+  if (a === b) return 'right';
+  return b.length >= 5 && editDistance(a, b) <= Math.max(1, Math.floor(b.length / 6)) ? 'close' : 'wrong';
+}
+
+function editDistance(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
 
 /** Ids of the tasks a note links to. */
 export function linkedTaskIds(text = '') {

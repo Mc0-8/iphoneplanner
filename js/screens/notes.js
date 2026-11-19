@@ -4,10 +4,11 @@ import * as store from '../store.js';
 import { state, flashcards, topicsDue } from '../store.js';
 import { todayKey, shortDate } from '../dates.js';
 import { openReview } from './review.js';
+import { openQuiz, quizCount } from './quiz.js';
 import { openSearch } from './search.js';
 import { openTaskEditor } from '../task-ui.js';
 import {
-  splitCards, joinCards, renderNote, renderInline, plainText, toggleTodo,
+  splitCards, joinCards, mapBlanks, renderNote, renderInline, plainText, toggleTodo,
   wrapSelection, toggleLinePrefix, insertAtCursor, taskLink,
 } from '../notes-format.js';
 
@@ -132,13 +133,17 @@ export function openTopic(id) {
         const notes = state.notes.filter((n) => n.topicId === t.id).sort((a, b) => a.createdAt - b.createdAt);
         body.innerHTML = `
           <p class="fineprint" style="margin-top:0">${subject ? `<span class="dot" style="background:${subject.colour}"></span>${esc(subject.name)} · ` : ''}Next review ${esc(shortDate(t.nextReview).toLowerCase())}${t.lastRating ? ` · last rated ${t.lastRating === 'ok' ? 'OK' : t.lastRating}` : ''}</p>
-          <button class="text-button primary with-icon" data-review>${icon('check', 18)} Review now</button>
+          <div class="review-tools">
+            <button class="text-button primary with-icon" data-review>${icon('check', 18)} Review now</button>
+            ${quizCount([t.id]) ? '<button class="text-button primary" data-quiz>Quiz me</button>' : ''}
+          </div>
           <ul class="rows notes-full"></ul>
           <button class="text-button primary with-icon" data-add>${icon('plus', 18)} Add note to this topic</button>
           <div class="delete-row"><button class="text-button danger with-icon" data-del>${icon('trash', 18)} Delete topic and its notes</button></div>`;
         const ul = body.querySelector('ul');
         for (const n of notes) ul.append(noteFull(n));
         body.querySelector('[data-review]').addEventListener('click', () => { close(); openReview([t.id]); });
+        body.querySelector('[data-quiz]')?.addEventListener('click', () => openQuiz([t.id]));
         body.querySelector('[data-add]').addEventListener('click', () => openNoteEditor(null, { subjectId: t.subjectId, topicName: t.name }));
         body.querySelector('[data-del]').addEventListener('click', async () => {
           if (!(await confirmSheet({ title: 'Delete topic?', message: `"${t.name}" and its ${notes.length} note${notes.length === 1 ? '' : 's'} will be deleted.`, confirm: 'Delete' }))) return;
@@ -182,6 +187,11 @@ export function wireNoteBody(el, onTick) {
   });
 }
 
+/** A fill-in-the-blank sentence with its blanks marked; `hide` covers them until tapped (reviews). */
+export function clozeHTML(q, opts, hide = false) {
+  return mapBlanks(q, (w) => `<mark class="blank${hide ? ' hidden-blank' : ''}">${esc(w)}</mark>`, (s) => renderInline(s, opts));
+}
+
 /** A note in the topic view: formatted text and its cards. Tap to edit. */
 function noteFull(n) {
   const { body, cards } = splitCards(n.text);
@@ -190,7 +200,8 @@ function noteFull(n) {
       <span class="num muted">${esc(shortDate(n.date))}</span>
       <div class="note-body">${noteBodyHTML(body)}</div>
       ${cards.length ? `<ul class="note-cards-mini">${cards.map((c) => `
-        <li><span class="q">${renderInline(c.q, fmt)}</span><span class="a">${c.a ? renderInline(c.a, fmt) : '<span class="muted">No answer yet</span>'}</span></li>`).join('')}</ul>` : ''}
+        <li>${c.type === 'cloze' ? `<span class="q">${clozeHTML(c.q, fmt)}</span>`
+          : `<span class="q">${renderInline(c.q, fmt)}</span><span class="a">${c.a ? renderInline(c.a, fmt) : '<span class="muted">No answer yet</span>'}</span>`}</li>`).join('')}</ul>` : ''}
     </li>`);
   const topicName = state.topics.find((t) => t.id === n.topicId)?.name || '';
   // Ticking saves the note in the same shape the editor does (cards together at the end).
@@ -263,9 +274,12 @@ export function openNoteEditor(existing, defaults = {}) {
         <textarea class="note-input" placeholder="What did you learn?" aria-label="Note">${esc(bodyText)}</textarea>
         <div class="note-preview note-body" hidden></div>
         <div class="field note-cards">
-          <span class="label">Flashcards<span class="hint">Asked in your reviews: question first, tap to see the answer</span></span>
+          <span class="label">Flashcards<span class="hint">Asked in your reviews and quizzes</span></span>
           <ol class="card-edits"></ol>
-          <button type="button" class="text-button primary with-icon" data-add-card>${icon('plus', 18)} Add card</button>
+          <div class="card-adds">
+            <button type="button" class="text-button primary with-icon" data-add-card>${icon('plus', 18)} Question card</button>
+            <button type="button" class="text-button primary with-icon" data-add-cloze>${icon('plus', 18)} Fill-in-the-blank</button>
+          </div>
         </div>`;
 
       const list = body.querySelector('#topic-list');
@@ -325,17 +339,40 @@ export function openNoteEditor(existing, defaults = {}) {
       const growField = (el) => { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; };
       const drawCards = (focus) => {
         cardList.innerHTML = cards.map((c, i) => `
-          <li class="card-edit" data-i="${i}">
+          <li class="card-edit${c.type === 'cloze' ? ' cloze' : ''}" data-i="${i}">
             <div class="card-edit-fields">
+              ${c.type === 'cloze' ? `
+              <textarea class="card-field q" rows="1" data-k="q" placeholder="Sentence, e.g. The capital of France is {Paris}" aria-label="Fill-in-the-blank sentence ${i + 1}" enterkeyhint="next">${esc(c.q)}</textarea>
+              <div class="cloze-tools"><button type="button" class="tool tool-text" data-blank>Blank</button><span class="hint">Select words, then tap Blank to hide them</span></div>` : `
               <textarea class="card-field q" rows="1" data-k="q" placeholder="Question" aria-label="Question ${i + 1}" enterkeyhint="next">${esc(c.q)}</textarea>
-              <textarea class="card-field a" rows="1" data-k="a" placeholder="Answer" aria-label="Answer ${i + 1}" enterkeyhint="next">${esc(c.a)}</textarea>
+              <textarea class="card-field a" rows="1" data-k="a" placeholder="Answer" aria-label="Answer ${i + 1}" enterkeyhint="next">${esc(c.a)}</textarea>`}
             </div>
             <button type="button" class="icon-button" data-rm aria-label="Remove card ${i + 1}">${icon('x', 16)}</button>
           </li>`).join('');
         cardList.querySelectorAll('.card-field').forEach(growField);
         if (focus) cardList.querySelector(`[data-i="${focus.i}"] [data-k="${focus.k}"]`)?.focus();
       };
-      const addCard = () => { cards.push({ q: '', a: '' }); drawCards({ i: cards.length - 1, k: 'q' }); };
+      const addCard = (type) => { cards.push(type === 'cloze' ? { type, q: '', a: '' } : { q: '', a: '' }); drawCards({ i: cards.length - 1, k: 'q' }); };
+      // "Blank" wraps the selected words in {braces}; with nothing selected it wraps the word at the cursor.
+      // A textarea keeps its selection after it loses focus, so tapping Blank can still read it.
+      const makeBlank = (li) => {
+        const f = li.querySelector('.card-field');
+        let s = f.selectionStart ?? f.value.length, e = f.selectionEnd ?? s;
+        const v = f.value;
+        if (s === e) { // grow to the word around the cursor
+          while (s > 0 && /[^\s{}]/.test(v[s - 1])) s--;
+          while (e < v.length && /[^\s{}]/.test(v[e])) e++;
+        }
+        while (s < e && /\s/.test(v[s])) s++;
+        while (e > s && /[\s.,;:!?]/.test(v[e - 1])) e--;
+        if (s === e) { toast('Select the words to hide first'); f.focus(); return; }
+        f.value = v.slice(0, s) + '{' + v.slice(s, e) + '}' + v.slice(e);
+        cards[li.dataset.i].q = f.value;
+        growField(f);
+        sync();
+        f.focus();
+        f.setSelectionRange(e + 2, e + 2);
+      };
       cardList.addEventListener('input', (e) => {
         const f = e.target.closest('.card-field');
         if (!f) return;
@@ -350,17 +387,21 @@ export function openNoteEditor(existing, defaults = {}) {
         e.preventDefault();
         const i = Number(f.closest('[data-i]').dataset.i);
         if (f.dataset.k === 'q') cardList.querySelector(`[data-i="${i}"] [data-k="a"]`).focus();
-        else if (i === cards.length - 1) { if (cards[i].q.trim() || cards[i].a.trim()) addCard(); }
+        else if (i === cards.length - 1) { if (cards[i].q.trim() || cards[i].a.trim()) addCard(cards[i].type); }
         else cardList.querySelector(`[data-i="${i + 1}"] [data-k="q"]`).focus();
       });
+      cardList.addEventListener('pointerdown', (e) => { if (e.target.closest('[data-blank]')) e.preventDefault(); }); // keep the selection
       cardList.addEventListener('click', (e) => {
+        const bl = e.target.closest('[data-blank]');
+        if (bl) { makeBlank(bl.closest('[data-i]')); return; }
         const rm = e.target.closest('[data-rm]');
         if (!rm) return;
         cards.splice(Number(rm.closest('[data-i]').dataset.i), 1);
         drawCards();
         sync();
       });
-      body.querySelector('[data-add-card]').addEventListener('click', addCard);
+      body.querySelector('[data-add-card]').addEventListener('click', () => addCard());
+      body.querySelector('[data-add-cloze]').addEventListener('click', () => addCard('cloze'));
 
       drawCards();
       requestAnimationFrame(grow);

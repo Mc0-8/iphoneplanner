@@ -25,6 +25,36 @@ function estimateHint() {
   return `<p class="fineprint" style="margin:8px 0 0">From your timer: tasks usually take you ${pct}% ${r > 1 ? 'longer' : 'less time'} than you plan.</p>`;
 }
 
+/* ---------- Overbooked ---------- */
+
+/** Sheet listing the tasks that don't fit before their deadline, with ways to fix it. */
+export function openOverbooked() {
+  openSheet({
+    title: 'Not enough time',
+    build(body) {
+      const draw = () => {
+        const list = state.plan.atRisk || [];
+        if (!list.length) { body.innerHTML = '<p class="empty">Everything fits now.</p>'; return; }
+        body.innerHTML = `
+          <p style="margin-top:0">There isn't enough free time before ${list.length === 1 ? 'this deadline' : 'these deadlines'}. You can:</p>
+          <ul class="summary-list">
+            <li>Move the deadline or shorten the task (tap it below)</li>
+            <li>Add free hours or raise your daily limit in Settings</li>
+            <li>Remove busy times or days off you don't need</li>
+          </ul>
+          <ul class="rows"></ul>`;
+        const ul = body.querySelector('.rows');
+        for (const r of list) {
+          const t = state.tasks.find((x) => x.id === r.taskId);
+          if (t) ul.append(taskRow(t));
+        }
+      };
+      draw();
+      const unsub = store.subscribe(() => { if (document.body.contains(body)) draw(); else unsub(); });
+    },
+  });
+}
+
 /* ---------- Row ---------- */
 
 export function taskRow(task, { showList = true, hideToday = false } = {}) {
@@ -42,6 +72,8 @@ export function taskRow(task, { showList = true, hideToday = false } = {}) {
       ? `<span class="late">Overdue · ${esc(shortDate(task.deadline))}</span>`
       : `<span>Due ${esc(lower(shortDate(task.deadline)))}</span>`);
   }
+  const short = !task.completed && store.shortfall(task.id);
+  if (short) bits.push(`<span class="tight">Won't fit · ${formatMinutes(short.minutes)} short</span>`);
   if (task.type !== 'exam') bits.push(`<span class="num">${formatMinutes(task.duration)}</span>`);
   if (task.steps?.length) bits.push(`<span class="num">${task.steps.filter((x) => x.done).length}/${task.steps.length} steps</span>`);
   if (task.notBefore && task.notBefore >= today && !task.completed && task.dateMode !== 'on') bits.push(`<span>From ${esc(lower(shortDate(task.notBefore)))}${task.notBeforeTime ? ` ${task.notBeforeTime}` : ''}</span>`);
@@ -394,6 +426,9 @@ export function openTaskEditor(existing, defaults = {}) {
     // A task without a list or date isn't planned: say where it went instead of letting it vanish.
     if (isNew && task.inbox) {
       toast('Added to the Inbox. Give it a list or date to plan it.', { action: () => import('./screens/tasks.js').then((m) => m.showInbox()), actionLabel: 'Show' });
+    } else if (!task.completed) {
+      const short = store.shortfall(task.id);
+      if (short) toast(`Heads up: ${formatMinutes(short.minutes)} of this doesn't fit before ${lower(shortDate(short.deadline))}.`, { action: () => openOverbooked(), actionLabel: 'Options' });
     }
   }
 }

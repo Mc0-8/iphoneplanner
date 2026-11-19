@@ -53,7 +53,7 @@ export function render(el) {
     const wk = addDays(first, page * 7);
     const blocks = state.blocks.filter((b) => b.status === 'planned' && b.date >= wk && b.date <= addDays(wk, 6) && b.date >= today)
       .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-    import('../ics.js').then((m) => m.openCalendarExport(blocks, weekRange(wk), `planner-${wk}.ics`));
+    import('../ics.js').then((m) => m.openCalendarExport(blocks, weekRange(wk), `planner-${wk}.ics`, { from: wk, to: addDays(wk, 6) }));
   });
 
   const summary = weekSummary(today);
