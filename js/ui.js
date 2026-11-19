@@ -88,15 +88,16 @@ export function confirmSheet({ title, message, confirm = 'Confirm' }) {
 /* ---------- Toast with optional undo ---------- */
 
 let toastTimer;
-export function toast(message, { undo } = {}) {
+export function toast(message, { undo, action, actionLabel = 'Undo', sticky = false } = {}) {
+  undo = undo || action;
   const el = document.getElementById('toast');
   clearTimeout(toastTimer);
-  el.innerHTML = `<span>${esc(message)}</span>${undo ? '<button type="button">Undo</button>' : ''}`;
+  el.innerHTML = `<span>${esc(message)}</span>${undo ? `<button type="button">${esc(actionLabel)}</button>` : ''}`;
   el.hidden = false;
   if (undo) {
     el.querySelector('button').addEventListener('click', () => { el.hidden = true; undo(); }, { once: true });
   }
-  toastTimer = setTimeout(() => { el.hidden = true; }, undo ? 5000 : 2600);
+  if (!sticky) toastTimer = setTimeout(() => { el.hidden = true; }, undo ? 5000 : 2600);
 }
 
 /* ---------- Swipe right to complete, swipe left to delete ---------- */

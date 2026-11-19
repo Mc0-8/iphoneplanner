@@ -1,9 +1,9 @@
 // Service worker: makes the app work offline.
-// Files are served from the cache straight away and refreshed in the background,
-// so a new version pushed to GitHub shows up the next time the app is opened.
+// Files are served from the cache straight away. When a new version is pushed to GitHub,
+// the app downloads it in the background and offers "Update" (also Settings → Check for updates).
 // Bump CACHE when the list of files changes.
 
-const CACHE = 'planner-v5';
+const CACHE = 'planner-v6';
 const FILES = [
   './',
   'index.html',
@@ -43,8 +43,14 @@ const FILES = [
   'js/screens/today.js',
 ];
 
+// Fetch fresh copies (skip the browser's HTTP cache) so a new version is complete and current.
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))));
+});
+
+// The page asks the new version to take over when the user taps "Update".
+self.addEventListener('message', (event) => {
+  if (event.data === 'activate-update') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -62,7 +68,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(req, { ignoreSearch: true });
-      const network = fetch(req)
+      const network = fetch(req, { cache: 'no-cache' })
         .then((res) => { if (res.ok) cache.put(req, res.clone()); return res; })
         .catch(() => cached);
       return cached || network;

@@ -1,6 +1,7 @@
 // Entry point: tab bar, screen switching, add button.
 
 import { icon } from './icons.js';
+import { toast } from './ui.js';
 import * as store from './store.js';
 import { requestPersistence } from './db.js';
 import { applyTheme } from './theme.js';
@@ -68,6 +69,44 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') store.replan();
 });
 
+/* ---------- Updates ---------- */
+
+let reloading = false;
+function setupUpdates() {
+  if (!('serviceWorker' in navigator) || !(location.protocol === 'https:' || location.hostname === 'localhost')) return;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    const offer = (worker) => {
+      if (!navigator.serviceWorker.controller) return; // first install: nothing to replace
+      toast('A new version is ready', { action: () => worker.postMessage('activate-update'), actionLabel: 'Update', sticky: true });
+    };
+    if (reg.waiting) offer(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w?.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); });
+    });
+    // Look for a new version whenever the app comes back to the front.
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
+}
+
+/** Used by Settings → Check for updates. Resolves to 'updating', 'latest' or 'offline'. */
+export async function checkForUpdates() {
+  const reg = await navigator.serviceWorker?.getRegistration();
+  if (!reg) { location.reload(); return 'updating'; }
+  try { await reg.update(); } catch { return 'offline'; }
+  if (!reg.waiting && !reg.installing) return 'latest';
+  // Wait (up to 20 s) for the new version to finish downloading, then switch to it.
+  for (let i = 0; i < 80 && !reg.waiting; i++) await new Promise((r) => setTimeout(r, 250));
+  if (!reg.waiting) return 'offline';
+  reg.waiting.postMessage('activate-update');
+  return 'updating';
+}
+
 async function start() {
   await store.load();
   applyTheme(store.state.settings.theme);
@@ -75,9 +114,7 @@ async function start() {
   render();
   requestPersistence();
 
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  setupUpdates();
 }
 
 start().catch((err) => {

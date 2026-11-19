@@ -6,7 +6,7 @@ import { applyTheme } from '../theme.js';
 import { todayKey, formatMinutes } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 
-export const VERSION = '0.4.1';
+export const VERSION = '0.4.2';
 
 export function openSettings() {
   openSheet({
@@ -81,7 +81,12 @@ export function openSettings() {
           <p class="fineprint">Your data is stored only on this phone. Back up now and then, so nothing is lost if Safari's data is cleared or you change phones.</p>
         </section>
 
-        <p class="fineprint num">Planner ${esc(VERSION)}</p>`;
+        <section class="group">
+          <h3>App</h3>
+          <button class="setting" data-update>
+            <span>Check for updates<span class="hint num">You have version ${esc(VERSION)}</span></span>${icon('download', 22)}
+          </button>
+        </section>`;
 
       body.querySelectorAll('[data-seg="theme"] button').forEach((b) => b.addEventListener('click', async () => {
         body.querySelectorAll('[data-seg="theme"] button').forEach((x) => x.setAttribute('aria-pressed', x === b));
@@ -111,6 +116,14 @@ export function openSettings() {
       hints();
       const unsub = store.subscribe(hints);
       new MutationObserver((_, obs) => { if (!document.body.contains(body)) { unsub(); obs.disconnect(); } }).observe(document.getElementById('sheet-layer'), { childList: true });
+
+      body.querySelector('[data-update]').addEventListener('click', async () => {
+        toast('Checking for updates…');
+        const { checkForUpdates } = await import('../app.js');
+        const r = await checkForUpdates();
+        if (r === 'latest') toast(`You have the latest version (${VERSION})`);
+        if (r === 'offline') toast("Couldn't check. Are you online?");
+      });
 
       body.querySelector('[data-backup]').addEventListener('click', backup);
 

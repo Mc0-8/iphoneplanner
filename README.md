@@ -17,7 +17,7 @@ This build covers **all four phases** of the plan.
 3. After a minute or so, the app is live at `https://<your-username>.github.io/<repo-name>/`.
 4. Open that link in **Safari** on your iPhone, tap **Share**, then **Add to Home Screen**.
 
-When you push a change to GitHub, the app picks it up the next time you open it (sometimes you need to open it twice).
+When a change is pushed to GitHub, the app downloads it in the background and shows **"A new version is ready — Update"**. You can also use **Settings → Check for updates**. Your data is kept.
 
 ## Run it on your Mac
 
