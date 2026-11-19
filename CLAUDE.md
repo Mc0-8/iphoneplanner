@@ -20,7 +20,7 @@ Planner: an offline iPhone study planner (timetable/scheduler, tasks, notes, fla
 | `js/ics.js` | Calendar (.ics) export: blocks with alerts, deadlines as all-day events with reminders |
 | `js/notes-format.js` | Note text format: light Markdown, task links, flashcards (`splitCards`/`joinCards`/`flashcards`), blanks, quiz items, answer checking |
 | `js/screens/*.js` | One file per screen or sheet: `today`, `week`, `day-view`, `study`, `tasks`, `notes`, `review`, `quiz`, `focus`, `habits`, `stats`, `settings`, `search`, `schedule`, `spare`, `lists` |
-| `css/app.css` | All styles; tokens on `:root` (`--accent`, `--text`, `--text-2`, `--divider`, `--radius`, `--s1..`) |
+| `css/app.css` | All styles; tokens on `:root` (`--accent`, `--text`, `--text-2`, `--divider`, `--surface`, `--surface-2`, `--shadow`, `--radius`, `--radius-lg`, `--s1..`). Lists (`.rows`) render as rounded cards; "Refresh (0.9)" section at the end overrides older rules |
 | `sw.js` | Offline cache. **New file → add to `FILES`. Any release → bump `CACHE`** (`planner-vN`) |
 
 ## Data formats (keep backwards compatible: old backups must still load)
@@ -31,6 +31,7 @@ Planner: an offline iPhone study planner (timetable/scheduler, tasks, notes, fla
 ## Conventions
 - UI copy: plain, friendly, British date format (`en-GB`), no jargon. Sentence case.
 - New setting → add to `DEFAULT_SETTINGS` with a default; settings merge over defaults on load.
+- Subject colour on a row: add class `tinted` and `style="--sc:<colour>"`; CSS washes the row in that colour (`--tint` %) with a solid left edge.
 - Release: bump `VERSION` in `js/screens/settings.js`, `CACHE` in `sw.js`, and add a line to `README.md`.
 - Testing: no test suite. Check pure logic with `node --input-type=module` importing the module, and the UI headless with Playwright, serving repo files via `page.route` for `http://app.test/` (no server needed). Use an iPhone-sized viewport (390×844).
 - The owner merges nothing by hand: Claude opens a PR, tests it, and merges it itself.

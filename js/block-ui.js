@@ -78,7 +78,7 @@ export function itemRow(item, { live = false } = {}) {
   const done = b.status === 'done';
   const missed = b.status === 'missed';
   const row = h(`
-    <li class="trow${done ? ' done' : ''}${past && !done ? ' past' : ''}${missed ? ' missed' : ''}" data-id="${b.id}" data-start="${item.start}" data-end="${item.end}">
+    <li class="trow${d.dot ? ' tinted' : ''}${done ? ' done' : ''}${past && !done ? ' past' : ''}${missed ? ' missed' : ''}"${d.dot ? ` style="--sc:${d.dot}"` : ''} data-id="${b.id}" data-start="${item.start}" data-end="${item.end}">
       <div class="ttime num">${fromMin(item.start)}<span>${fromMin(item.end)}</span></div>
       <button class="check" type="button" aria-label="${done ? 'Mark as not done' : 'Mark as done'}"><span>${icon('check', 14)}</span></button>
       <button class="tbody" type="button">

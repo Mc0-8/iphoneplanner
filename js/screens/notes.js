@@ -70,7 +70,7 @@ export function render(el) {
     any = true;
     const isOpen = open.has(String(g.id));
     const grp = h(`
-      <div class="tgroup">
+      <div class="tgroup${g.s ? ' tinted' : ''}"${g.s ? ` style="--sc:${g.s.colour}"` : ''}>
         <button class="tgroup-head" aria-expanded="${isOpen}">
           <span>${g.s ? `<span class="dot" style="background:${g.s.colour}"></span>${esc(g.s.name)}` : 'No subject'}</span>
           <span class="muted num">${topics.length} topic${topics.length === 1 ? '' : 's'}${loose.length ? ` · ${loose.length} loose` : ''} ${icon('caretRight', 14)}</span>
@@ -111,7 +111,7 @@ function noteRow(n) {
   const topic = state.topics.find((t) => t.id === n.topicId);
   const first = plainText(splitCards(n.text).body || n.text).split('\n').find((l) => l.trim()) || '';
   const row = h(`
-    <li class="row"><div class="row-inner">
+    <li class="row${subject ? ' tinted' : ''}"${subject ? ` style="--sc:${subject.colour}"` : ''}><div class="row-inner">
       <button class="row-body" type="button">
         <span class="title note-text">${esc(first)}</span>
         <span class="sub">${subject ? `<span class="dot" style="background:${subject.colour}"></span><span>${esc(subject.name)}</span>` : ''}${topic ? `<span>${esc(topic.name)}</span>` : '<span>No topic</span>'}<span>${esc(shortDate(n.date))}</span></span>
