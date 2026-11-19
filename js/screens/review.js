@@ -4,6 +4,8 @@ import { icon } from '../icons.js';
 import { esc, h, openSheet, toast } from '../ui.js';
 import * as store from '../store.js';
 import { state, flashcards, REVIEW_STEPS } from '../store.js';
+import { splitCards, joinCards, toggleTodo, renderInline } from '../notes-format.js';
+import { noteBodyHTML, wireNoteBody } from './notes.js';
 import { shortDate, addDays, todayKey } from '../dates.js';
 
 export function openReview(topicIds) {
@@ -21,7 +23,9 @@ export function openReview(topicIds) {
         const subject = store.subjectById(t.subjectId);
         const notes = state.notes.filter((n) => n.topicId === t.id).sort((a, b) => a.createdAt - b.createdAt);
         const cards = notes.flatMap((n) => flashcards(n.text));
-        const plain = notes.map((n) => n.text.split('\n').filter((l) => !/^\s*[QA]\s*[:.)]/i.test(l)).join('\n').trim()).filter(Boolean);
+        const parts = notes.map((n) => ({ n, ...splitCards(n.text) })).filter((p) => p.body);
+        const plain = parts.map((p) => p.body);
+        const inline = (s) => renderInline(s, { taskById: (id) => state.tasks.find((x) => x.id === id), inert: true });
         const nextFor = (r) => {
           const step = r === 'hard' ? 0 : Math.min(REVIEW_STEPS.length - 1, t.step + (r === 'easy' ? 2 : 1));
           return shortDate(addDays(todayKey(), REVIEW_STEPS[step]));
@@ -31,11 +35,11 @@ export function openReview(topicIds) {
           <p class="review-count num">${i + 1} of ${queue.length}</p>
           <h3 class="review-title">${subject ? `<span class="dot" style="background:${subject.colour}"></span>` : ''}${esc(t.name)}</h3>
           <p class="fineprint" style="margin-top:2px">${[subject?.name, t.lastReviewed ? `last reviewed ${shortDate(t.lastReviewed).toLowerCase()}` : 'first review'].filter(Boolean).map(esc).join(' · ')}</p>
-          ${plain.length ? `<div class="review-notes">${plain.map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}</div>` : ''}
+          ${plain.length ? `<div class="review-notes">${parts.map((p, j) => `<div class="note-body" data-n="${j}">${noteBodyHTML(p.body)}</div>`).join('')}</div>` : ''}
           ${cards.length ? `<div class="cards">${cards.map((c, j) => `
             <button type="button" class="card" data-card="${j}" aria-expanded="false">
-              <span class="q">${esc(c.q)}</span>
-              <span class="a" hidden>${esc(c.a)}</span>
+              <span class="q">${inline(c.q)}</span>
+              <span class="a" hidden>${inline(c.a)}</span>
               <span class="reveal">Tap to show answer</span>
             </button>`).join('')}</div>` : ''}
           ${!plain.length && !cards.length ? '<p class="empty">This topic has no notes.</p>' : ''}
@@ -47,6 +51,15 @@ export function openReview(topicIds) {
             </div>
           </div>`;
 
+        body.querySelectorAll('.review-notes [data-n]').forEach((el) => {
+          const p = parts[el.dataset.n];
+          wireNoteBody(el, (line) => {
+            p.body = toggleTodo(p.body, line);
+            p.n = { ...p.n, text: joinCards(p.body, p.cards) };
+            store.saveNote({ ...p.n, topicName: t.name });
+            el.innerHTML = noteBodyHTML(p.body);
+          });
+        });
         body.querySelectorAll('.card').forEach((c) => c.addEventListener('click', () => {
           const open = c.getAttribute('aria-expanded') === 'true';
           c.setAttribute('aria-expanded', !open);

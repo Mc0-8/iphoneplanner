@@ -5,6 +5,7 @@ import * as store from '../store.js';
 import { state } from '../store.js';
 import { shortDate } from '../dates.js';
 import { openTaskEditor } from '../task-ui.js';
+import { plainText } from '../notes-format.js';
 
 export function openSearch() {
   openSheet({
@@ -21,7 +22,7 @@ export function openSearch() {
         results.innerHTML = '';
         if (q.length < 2) return;
         const topics = state.topics.filter((t) => t.name.toLowerCase().includes(q));
-        const notes = state.notes.filter((n) => n.text.toLowerCase().includes(q));
+        const notes = state.notes.map((n) => ({ n, text: plainText(n.text) })).filter((x) => x.text.toLowerCase().includes(q));
         const tasks = state.tasks.filter((t) => t.title.toLowerCase().includes(q) || (t.notes || '').toLowerCase().includes(q))
           .sort((a, b) => a.completed - b.completed);
         if (!topics.length && !notes.length && !tasks.length) { results.append(h('<p class="empty">No results.</p>')); return; }
@@ -46,7 +47,7 @@ export function openSearch() {
 
         section('Topics', topics, (t) => row(mark(t.name), esc(store.subjectById(t.subjectId)?.name || 'No subject'),
           () => import('./notes.js').then((m) => m.openTopic(t.id))));
-        section('Notes', notes, (n) => row(mark(n.text.replace(/\n/g, ' ')), `${esc(store.subjectById(n.subjectId)?.name || '')} ${esc(shortDate(n.date))}`,
+        section('Notes', notes, ({ n, text }) => row(mark(text.replace(/\n/g, ' ')), `${esc(store.subjectById(n.subjectId)?.name || '')} ${esc(shortDate(n.date))}`,
           () => import('./notes.js').then((m) => m.openNoteEditor(n))));
         section('Tasks', tasks, (t) => row(mark(t.title), `${t.completed ? 'Done' : t.deadline ? `Due ${esc(shortDate(t.deadline))}` : 'No deadline'}`,
           () => openTaskEditor(t)));

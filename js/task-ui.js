@@ -6,6 +6,7 @@ import * as store from './store.js';
 import { state } from './store.js';
 import { todayKey, addDays, shortDate, formatMinutes, daysBetween } from './dates.js';
 import { parseQuickAdd, titleKeeping } from './parse.js';
+import { linkedTaskIds, plainText, splitCards } from './notes-format.js';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 const lower = (w) => w.replace(/^(Today|Tomorrow|Yesterday)$/, (x) => x.toLowerCase());
@@ -85,6 +86,24 @@ function complete(task) {
 }
 
 /* ---------- Add / edit sheet ---------- */
+
+/** Notes that link to this task (see notes-format.js), shown in the task sheet. */
+function linkedNotesHTML(taskId) {
+  const notes = state.notes.filter((n) => linkedTaskIds(n.text).includes(taskId)).sort((a, b) => b.createdAt - a.createdAt);
+  if (!notes.length) return '';
+  return `
+    <div class="field linked-notes">
+      <span class="label">Linked notes</span>
+      <ul class="rows">${notes.map((n) => {
+        const topic = state.topics.find((t) => t.id === n.topicId);
+        const first = plainText(splitCards(n.text).body || n.text).split('\n').find((l) => l.trim()) || '';
+        return `<li class="row"><div class="row-inner"><button class="row-body" type="button" data-note="${n.id}">
+          <span class="title note-text">${esc(first)}</span>
+          <span class="sub"><span>${esc(topic?.name || 'No topic')}</span><span>${esc(shortDate(n.date))}</span></span>
+        </button></div></li>`;
+      }).join('')}</ul>
+    </div>`;
+}
 
 export function openTaskEditor(existing, defaults = {}) {
   const isNew = !existing;
@@ -187,6 +206,7 @@ export function openTaskEditor(existing, defaults = {}) {
             <textarea id="notes" class="textarea">${esc(task.notes)}</textarea>
           </div>
         </div>
+        ${linkedNotesHTML(task.id)}
 
         ${isNew ? '' : `<div class="delete-row"><button type="button" class="text-button danger with-icon" data-delete>${icon('trash', 18)} Delete task</button></div>`}
       `;
@@ -348,6 +368,10 @@ export function openTaskEditor(existing, defaults = {}) {
       body.querySelector('#subject-select').addEventListener('change', (e) => { task.subjectId = e.target.value || null; });
       body.querySelector('#list-select').addEventListener('change', (e) => { task.listId = e.target.value || null; manual.add('listId'); });
       body.querySelector('#notes').addEventListener('input', (e) => { task.notes = e.target.value; });
+      body.querySelectorAll('[data-note]').forEach((b) => b.addEventListener('click', () => {
+        const n = state.notes.find((x) => x.id === b.dataset.note);
+        if (n) import('./screens/notes.js').then((m) => m.openNoteEditor(n));
+      }));
 
       // Delete
       body.querySelector('[data-delete]')?.addEventListener('click', async () => {

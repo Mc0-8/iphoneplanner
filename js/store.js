@@ -496,18 +496,8 @@ export async function skipReview(blockId) {
   await commit();
 }
 
-/** Flashcards from "Q: …" / "A: …" lines. */
-export function flashcards(text) {
-  const cards = [];
-  let q = null;
-  for (const line of text.split('\n')) {
-    const m = line.match(/^\s*([QA])\s*[:.)]\s*(.*)$/i);
-    if (!m) { if (q && cards.at(-1)?.q === q && line.trim()) cards.at(-1).a += ' ' + line.trim(); continue; }
-    if (m[1].toUpperCase() === 'Q') q = m[2].trim();
-    else if (q) { cards.push({ q, a: m[2].trim() }); }
-  }
-  return cards;
-}
+/** Flashcards from "Q: …" / "A: …" lines (see notes-format.js). */
+export { flashcards } from './notes-format.js';
 
 export const topicsDue = (day = todayKey()) => state.topics.filter((t) => t.nextReview && t.nextReview <= day);
 
