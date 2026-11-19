@@ -14,7 +14,7 @@ export function openAvailability() {
     title: 'Available hours',
     build(body) {
       body.innerHTML = `
-        <p class="fineprint" style="margin-top:0">When you're free to study and do tasks. The planner only uses these times.</p>
+        <p class="fineprint" style="margin-top:0">When you're free to study and do tasks. Nothing gets planned outside these times: 15:30–20:00 means nothing before 15:30 and nothing after 20:00. Set the end to 00:00 to allow planning up to midnight. For a busy gap in the middle of a day (sport, a job), add it under Fixed commitments.</p>
         <div class="avail"></div>`;
       const wrap = body.querySelector('.avail');
       for (const [wd, name] of WEEK) {
@@ -36,10 +36,10 @@ export function openAvailability() {
           const availability = structuredClone(state.settings.availability);
           availability[wd] = { on: on.checked, start: from.value || '16:00', end: until.value || '21:00' };
           row.querySelector('.avail-times').hidden = !on.checked;
-          warn.hidden = !(on.checked && availability[wd].end <= availability[wd].start);
+          warn.hidden = !(on.checked && availability[wd].end !== '00:00' && availability[wd].end <= availability[wd].start);
           store.updateSettings({ availability });
         };
-        warn.hidden = !(a.on && a.end <= a.start);
+        warn.hidden = !(a.on && a.end !== '00:00' && a.end <= a.start);
         [on, from, until].forEach((i) => i.addEventListener('change', save));
         wrap.append(row);
       }
