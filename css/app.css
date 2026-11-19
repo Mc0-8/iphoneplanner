@@ -889,3 +889,9 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; paddi
 .summary-list { list-style: none; margin: 10px 0 0; padding: 0; font-size: 14.5px; }
 .summary-list li { padding: 3px 0; }
 .summary-list .warn { color: var(--accent); }
+
+/* Timed habits and one-off busy times */
+.zfixed.zhabit { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); border-style: dashed; border-color: color-mix(in srgb, var(--accent) 40%, var(--bg)); color: var(--text); }
+.habit-row .sub span:first-child { color: var(--accent); }
+.date-wrap .input { min-width: 0; }
+.date-wrap .date-clear { padding: 0 6px; flex: none; }

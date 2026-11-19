@@ -49,13 +49,15 @@ export function openCommitments() {
     build(body) {
       const draw = () => {
         body.innerHTML = `
-          <p class="fineprint" style="margin-top:0">Things that happen every week, like school, sport or a job. Nothing is planned during them.</p>
+          <p class="fineprint" style="margin-top:0">Times you're busy, like school, sport or a work shift. Set them for every week or for one day. Nothing is planned during them.</p>
           <ul class="rows"></ul>
           <button class="text-button primary with-icon" data-add style="margin-top:8px">${icon('plus', 18)} Add commitment</button>`;
         const ul = body.querySelector('ul');
         if (!state.commitments.length) ul.append(h('<li><p class="empty">None yet.</p></li>'));
-        for (const c of [...state.commitments].sort((a, b) => a.start.localeCompare(b.start))) {
-          const days = WEEK.filter(([wd]) => c.weekdays.includes(wd)).map(([, n]) => n.slice(0, 3)).join(', ');
+        const list = state.commitments.filter((c) => !c.date || c.date >= todayKey())
+          .sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.start.localeCompare(b.start));
+        for (const c of list) {
+          const days = c.date ? shortDate(c.date) : WEEK.filter(([wd]) => c.weekdays.includes(wd)).map(([, n]) => n.slice(0, 3)).join(', ');
           const row = h(`
             <li class="row"><div class="row-inner">
               <button class="row-body" type="button">
@@ -75,12 +77,13 @@ export function openCommitments() {
 }
 
 function editCommitment(existing, onDone) {
-  const c = existing ? structuredClone(existing) : { id: store.uid(), name: '', weekdays: [1, 2, 3, 4, 5], start: '08:30', end: '15:30' };
+  const c = existing ? structuredClone(existing) : { id: store.uid(), name: '', weekdays: [1, 2, 3, 4, 5], date: null, start: '08:30', end: '15:30' };
+  const valid = () => c.name.trim() && c.end > c.start && (c.date || c.weekdays.length);
   openSheet({
     title: existing ? 'Edit commitment' : 'New commitment',
     action: 'Save',
     onAction: async (close) => {
-      if (!c.name.trim() || !c.weekdays.length || c.end <= c.start) return;
+      if (!valid()) return;
       await store.saveCommitment(c);
       close();
       onDone();
@@ -89,8 +92,13 @@ function editCommitment(existing, onDone) {
       body.innerHTML = `
         <input class="title-input" placeholder="e.g. School, Football" value="${esc(c.name)}" aria-label="Name">
         <div class="field">
-          <span class="label">Days</span>
-          <div class="chips">${WEEK.map(([wd, n]) => `<button type="button" class="chip" data-wd="${wd}" aria-pressed="${c.weekdays.includes(wd)}">${n.slice(0, 3)}</button>`).join('')}</div>
+          <span class="label">When</span>
+          <div class="segmented" data-seg="when" style="margin-bottom:12px">
+            <button type="button" data-v="weekly" aria-pressed="${!c.date}">Every week</button>
+            <button type="button" data-v="once" aria-pressed="${!!c.date}">One day</button>
+          </div>
+          <div class="chips" data-weekly ${c.date ? 'hidden' : ''}>${WEEK.map(([wd, n]) => `<button type="button" class="chip" data-wd="${wd}" aria-pressed="${c.weekdays.includes(wd)}">${n.slice(0, 3)}</button>`).join('')}</div>
+          <input class="input num" type="date" min="${todayKey()}" value="${c.date || todayKey()}" data-once ${c.date ? '' : 'hidden'} aria-label="Date">
         </div>
         <div class="field">
           <span class="label">Time</span>
@@ -102,7 +110,17 @@ function editCommitment(existing, onDone) {
         </div>
         ${existing ? `<div class="delete-row"><button type="button" class="text-button danger with-icon" data-delete>${icon('trash', 18)} Delete commitment</button></div>` : ''}`;
       const name = body.querySelector('.title-input');
-      const sync = () => { saveBtn.disabled = !c.name.trim() || !c.weekdays.length || c.end <= c.start; };
+      const sync = () => { saveBtn.disabled = !valid(); };
+      const onceIn = body.querySelector('[data-once]');
+      body.querySelectorAll('[data-seg="when"] button').forEach((b) => b.addEventListener('click', () => {
+        const once = b.dataset.v === 'once';
+        c.date = once ? (onceIn.value || todayKey()) : null;
+        body.querySelectorAll('[data-seg="when"] button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+        body.querySelector('[data-weekly]').hidden = once;
+        onceIn.hidden = !once;
+        sync();
+      }));
+      onceIn.addEventListener('change', () => { if (c.date !== null) c.date = onceIn.value || todayKey(); sync(); });
       name.addEventListener('input', () => { c.name = name.value; sync(); });
       body.querySelectorAll('[data-wd]').forEach((b) => b.addEventListener('click', () => {
         const wd = Number(b.dataset.wd);

@@ -30,6 +30,7 @@ export function taskRow(task, { showList = true, hideToday = false } = {}) {
       : `<span>Due ${esc(shortDate(task.deadline).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase()))}</span>`);
   }
   if (task.type !== 'exam') bits.push(`<span class="num">${formatMinutes(task.duration)}</span>`);
+  if (task.notBefore && task.notBefore >= today && !task.completed) bits.push(`<span>From ${esc(shortDate(task.notBefore).replace(/^(Today|Tomorrow)$/, (w) => w.toLowerCase()))}${task.notBeforeTime ? ` ${task.notBeforeTime}` : ''}</span>`);
   if (task.repeat && task.repeat !== 'none') bits.push(`<span>${{ daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly' }[task.repeat]}</span>`);
   const list = showList && store.listName(task.listId);
   if (list) bits.push(`<span>${esc(list)}</span>`);
@@ -75,7 +76,7 @@ function complete(task) {
 export function openTaskEditor(existing, defaults = {}) {
   const isNew = !existing;
   const task = isNew ? store.newTask(defaults) : structuredClone(existing);
-  const hasExtras = !isNew && (task.type === 'exam' || task.priority !== 'medium' || task.listId || task.notes);
+  const hasExtras = !isNew && (task.type === 'exam' || task.priority !== 'medium' || task.listId || task.notes || task.notBefore);
 
   openSheet({
     title: isNew ? (task.type === 'exam' ? 'New exam' : 'New task') : 'Edit task',
@@ -125,6 +126,14 @@ export function openTaskEditor(existing, defaults = {}) {
             <span class="label">Priority</span>
             <div class="segmented" data-seg="priority">
               ${['low', 'medium', 'high'].map((p) => `<button type="button" data-v="${p}" aria-pressed="${task.priority === p}">${p[0].toUpperCase() + p.slice(1)}</button>`).join('')}
+            </div>
+          </div>
+          <div class="field" data-field="notbefore" ${task.type === 'exam' ? 'hidden' : ''}>
+            <span class="label">Not before<span class="hint">e.g. you're at work until then, or can't start until a day</span></span>
+            <div class="date-wrap">
+              <input class="input num" type="date" value="${task.notBefore || ''}" data-nb-date aria-label="Not before date">
+              <input class="input num" type="time" step="300" value="${task.notBeforeTime || ''}" data-nb-time aria-label="Not before time" style="flex:0 0 112px">
+              <button type="button" class="text-button date-clear" data-nb-clear>Clear</button>
             </div>
           </div>
           <div class="field" data-field="repeat" ${task.type === 'exam' ? 'hidden' : ''}>
@@ -189,10 +198,18 @@ export function openTaskEditor(existing, defaults = {}) {
           body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
           body.querySelector('[data-field="subject"]').hidden = task.type !== 'exam' || !state.subjects.length;
           body.querySelector('[data-field="repeat"]').hidden = task.type === 'exam';
+          body.querySelector('[data-field="notbefore"]').hidden = task.type === 'exam';
         }
         if (seg.dataset.seg === 'repeat' && task.repeat !== 'none' && !task.deadline) setDate(todayKey());
       })));
       body.querySelector('[data-field="duration"]').hidden = task.type === 'exam';
+      const nbDate = body.querySelector('[data-nb-date]'), nbTime = body.querySelector('[data-nb-time]');
+      nbDate.addEventListener('change', () => { task.notBefore = nbDate.value || null; if (!task.notBefore) { task.notBeforeTime = null; nbTime.value = ''; } });
+      nbTime.addEventListener('change', () => {
+        if (nbTime.value && !nbDate.value) { nbDate.value = todayKey(); task.notBefore = todayKey(); }
+        task.notBeforeTime = nbTime.value || null;
+      });
+      body.querySelector('[data-nb-clear]').addEventListener('click', () => { task.notBefore = null; task.notBeforeTime = null; nbDate.value = ''; nbTime.value = ''; });
       body.querySelector('#subject-select').addEventListener('change', (e) => { task.subjectId = e.target.value || null; });
       body.querySelector('#list-select').addEventListener('change', (e) => { task.listId = e.target.value || null; });
       body.querySelector('#notes').addEventListener('input', (e) => { task.notes = e.target.value; });

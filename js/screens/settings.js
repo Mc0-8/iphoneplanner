@@ -6,7 +6,7 @@ import { applyTheme } from '../theme.js';
 import { todayKey, formatMinutes } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 
-export const VERSION = '0.4.0 · phase 4';
+export const VERSION = '0.4.1';
 
 export function openSettings() {
   openSheet({
@@ -102,8 +102,9 @@ export function openSettings() {
         const on = WEEK.filter(([wd]) => state.settings.availability[wd].on);
         const wk = state.settings.availability[1], we = state.settings.availability[6];
         body.querySelector('[data-hint="availability"]').textContent = `${on.length} days · weekdays ${wk.on ? `${wk.start}–${wk.end}` : 'off'}, Sat ${we.on ? `${we.start}–${we.end}` : 'off'}`;
-        const n = state.commitments.length;
-        body.querySelector('[data-hint="commitments"]').textContent = n ? `${n} set: ${state.commitments.map((c) => c.name).slice(0, 3).join(', ')}` : 'School, sport, a job…';
+        const active = state.commitments.filter((c) => !c.date || c.date >= todayKey());
+        const n = active.length;
+        body.querySelector('[data-hint="commitments"]').textContent = n ? `${n} set: ${[...new Set(active.map((c) => c.name))].slice(0, 3).join(', ')}` : 'School, sport, work shifts…';
         const off = state.daysOff.filter((d) => d.weekday !== null && d.weekday !== undefined).length + state.daysOff.filter((d) => d.date && d.date >= todayKey()).length;
         body.querySelector('[data-hint="daysoff"]').textContent = off ? `${off} set` : 'Holidays, sick days, a rest day';
       };

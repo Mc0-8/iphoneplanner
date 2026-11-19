@@ -77,7 +77,7 @@ export const replan = commit;
 /* ---------- Tasks ---------- */
 
 /** A task sits in the inbox until it has a list or a deadline. */
-const inInbox = (t) => !t.listId && !t.deadline;
+const inInbox = (t) => !t.listId && !t.deadline && !t.notBefore;
 
 export function newTask(fields = {}) {
   return {
@@ -415,13 +415,13 @@ export async function saveHabit(h) {
   const i = state.habits.findIndex((x) => x.id === h.id);
   if (i >= 0) state.habits[i] = h; else state.habits.push(h);
   await db.put('habits', h);
-  emit();
+  await commit(); // a habit with a set time changes what's free
 }
 export async function deleteHabit(id) {
   const h = state.habits.find((x) => x.id === id);
   state.habits = state.habits.filter((x) => x.id !== id);
   await db.remove('habits', id);
-  emit();
+  await commit();
   return h;
 }
 export async function toggleHabit(id, day = todayKey()) {

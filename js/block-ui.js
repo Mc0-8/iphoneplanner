@@ -15,8 +15,8 @@ export function dayItems(key) {
   const blocks = state.blocks
     .filter((b) => b.date === key && !(b.status === 'missed' && key >= todayKey()))
     .map((b) => ({ type: 'block', start: b.start, end: b.start + b.duration, block: b }));
-  const fixed = commitmentsOn(state.commitments, key)
-    .map((c) => ({ type: 'fixed', start: c.s, end: c.e, commitment: c }));
+  const fixed = commitmentsOn(state.commitments, key, state.habits)
+    .map((c) => ({ type: c.kind === 'habit' ? 'habit' : 'fixed', start: c.s, end: c.e, commitment: c, day: key }));
   return [...blocks, ...fixed].sort((a, b) => a.start - b.start || (a.type === 'fixed' ? -1 : 1));
 }
 
@@ -43,6 +43,22 @@ export function describe(b) {
 export function itemRow(item, { live = false } = {}) {
   const now = nowMin();
   const past = live && item.end <= now;
+  if (item.type === 'habit') {
+    const hb = item.commitment;
+    const done = hb.done.includes(item.day);
+    const row = h(`
+      <li class="trow habit-row${done ? ' done' : ''}${past && !done ? ' past' : ''}" data-start="${item.start}" data-end="${item.end}">
+        <div class="ttime num">${fromMin(item.start)}<span>${fromMin(item.end)}</span></div>
+        <button class="check" type="button" aria-label="${done ? 'Mark as not done' : 'Mark as done'}"><span>${icon('check', 14)}</span></button>
+        <button class="tbody" type="button">
+          <span class="title">${esc(hb.name)}</span>
+          <span class="sub"><span>Habit</span><span class="num">${formatMinutes(item.end - item.start)}</span></span>
+        </button>
+      </li>`);
+    row.querySelector('.check').addEventListener('click', () => store.toggleHabit(hb.id, item.day));
+    row.querySelector('.tbody').addEventListener('click', () => import('./screens/habits.js').then((m) => m.openHabitEditor(state.habits.find((x) => x.id === hb.id))));
+    return row;
+  }
   if (item.type === 'fixed') {
     const c = item.commitment;
     return h(`
@@ -50,7 +66,7 @@ export function itemRow(item, { live = false } = {}) {
         <div class="ttime num">${fromMin(item.start)}<span>${fromMin(item.end)}</span></div>
         <div class="tbody">
           <span class="title">${esc(c.name)}</span>
-          <span class="sub">Fixed · ${formatMinutes(item.end - item.start)}</span>
+          <span class="sub">${c.date ? 'One-off' : 'Fixed'} · ${formatMinutes(item.end - item.start)}</span>
         </div>
       </li>`);
   }

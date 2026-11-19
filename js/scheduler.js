@@ -32,12 +32,19 @@ export function windowFor(settings, daysOff, key) {
   return e > s ? [s, e] : null;
 }
 
-export function commitmentsOn(commitments, key) {
+/**
+ * Fixed times on a day: weekly or one-off commitments, plus habits that have a set time.
+ * Habits come back with kind 'habit'; commitments with kind 'commitment'.
+ */
+export function commitmentsOn(commitments, key, habits = []) {
   const wd = weekday(key);
-  return commitments
-    .filter((c) => c.weekdays.includes(wd))
-    .map((c) => ({ ...c, s: toMin(c.start), e: toMin(c.end) }))
-    .sort((a, b) => a.s - b.s);
+  const fixed = commitments
+    .filter((c) => (c.date ? c.date === key : c.weekdays.includes(wd)))
+    .map((c) => ({ ...c, kind: 'commitment', s: toMin(c.start), e: toMin(c.end) }));
+  const timed = habits
+    .filter((h) => h.time && h.weekdays.includes(wd))
+    .map((h) => ({ ...h, kind: 'habit', start: h.time, s: toMin(h.time), e: toMin(h.time) + (h.duration || 30) }));
+  return [...fixed, ...timed].sort((a, b) => a.s - b.s);
 }
 
 /**
@@ -86,7 +93,7 @@ export function plan(data, now = new Date()) {
   const dayInfo = new Map();
   for (const k of days) {
     const win = windowFor(settings, daysOff, k);
-    const busy = commitmentsOn(commitments, k).map((c) => [c.s, c.e]);
+    const busy = commitmentsOn(commitments, k, data.habits || []).map((c) => [c.s, c.e]);
     let load = 0;
     for (const b of kept) {
       if (b.date !== k || b.status === 'missed') continue;
@@ -137,10 +144,13 @@ export function plan(data, now = new Date()) {
     if (remaining < MIN_PIECE / 3) continue;
     remaining = Math.max(remaining, MIN_PIECE);
     const latest = t.deadline ? (t.deadline < today ? today : (t.deadline > end ? end : t.deadline)) : end;
+    const earliest = t.notBefore && t.notBefore > today ? t.notBefore : today;
+    if (earliest > end) continue; // starts after the planning window
     const pieces = t.duration > SPLIT_ABOVE ? splitMinutes(remaining, CHUNK) : [remaining];
     pieces.forEach((min) => items.push({
       kind: 'task', taskId: t.id, key: 'task:' + t.id, duration: min,
-      first: today, last: latest,
+      first: earliest, last: latest < earliest ? earliest : latest,
+      notBefore: t.notBefore || null, notBeforeMin: t.notBeforeTime ? toMin(t.notBeforeTime) : 0,
       group: t.deadline ? 1 : 3,
       sortDate: t.deadline || '9999', prio: { high: 0, medium: 1, low: 2 }[t.priority] ?? 1,
       title: t.title, deadline: t.deadline,
@@ -159,7 +169,23 @@ export function plan(data, now = new Date()) {
       const target = Math.round((s.hoursPerWeek * 60 * (boosted ? 1.5 : 1)) / 15) * 15;
       const used = kept.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.status !== 'missed' && b.date >= wk && b.date <= wkEnd)
         .reduce((sum, b) => sum + b.duration, 0);
-      const remaining = target - used;
+      let remaining = target - used;
+      // This week: only a fair share for the days that are left (plus anything actually missed),
+      // so starting mid-week or adding a subject doesn't cram a whole week into a few days.
+      if (wk === mondayOf(today)) {
+        let total = 0, left = 0;
+        for (let k = wk; k <= wkEnd; k = addDays(k, 1)) {
+          if (!windowFor(settings, daysOff, k)) continue;
+          total++;
+          if (k >= today) left++;
+        }
+        const missed = data.blocks.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.date >= wk && b.date < today &&
+          (b.status === 'missed' || (b.status === 'planned' && !b.pinned))).reduce((sum, b) => sum + b.duration, 0);
+        const fromToday = kept.filter((b) => b.kind === 'study' && b.subjectId === s.id && b.status !== 'missed' && b.date >= today && b.date <= wkEnd)
+          .reduce((sum, b) => sum + b.duration, 0);
+        const share = total ? Math.round(((target * left) / total + missed) / 15) * 15 : 0;
+        remaining = Math.min(remaining, share - fromToday);
+      }
       if (remaining < MIN_PIECE) continue;
       const pieces = splitMinutes(remaining, settings.sessionLength);
       pieces.forEach((min, i) => studyItems.push({
@@ -188,7 +214,8 @@ export function plan(data, now = new Date()) {
       if (k < item.first || k > item.last) continue;
       const info = dayInfo.get(k);
       if (!info.win || info.load + item.duration > cap) continue;
-      const start = findSlot(info, item.duration, gap);
+      const after = item.notBefore && k === item.notBefore ? item.notBeforeMin : 0;
+      const start = findSlot(info, item.duration, gap, after);
       if (start === null) continue;
       let score = info.load;
       if (info.keys.has(item.key)) score += 10000;                       // same subject/task twice in a day
@@ -221,7 +248,7 @@ export function plan(data, now = new Date()) {
     for (let k = wk < today ? today : wk; k <= wkEnd; k = addDays(k, 1)) {
       const info = dayInfo.get(k);
       if (!info?.win) continue;
-      const open = freeMinutes(info.win, commitmentsOn(commitments, k).map((c) => [c.s, c.e]));
+      const open = freeMinutes(info.win, commitmentsOn(commitments, k, data.habits || []).map((c) => [c.s, c.e]));
       free += Math.min(cap, open);
     }
     for (const b of all) if (b.date >= wk && b.date <= wkEnd && b.date >= today && b.status !== 'missed') planned += b.duration;
@@ -259,8 +286,8 @@ export function splitMinutes(total, size) {
 }
 
 /** Earliest start in the day's window that fits `dur` with a break around other blocks. */
-function findSlot(info, dur, gap) {
-  const [ws, we] = info.win;
+function findSlot(info, dur, gap, after = 0) {
+  const ws = Math.max(info.win[0], after), we = info.win[1];
   const busy = info.busy
     .map(([s, e]) => [s - gap, e + gap])
     .sort((a, b) => a[0] - b[0]);
@@ -285,7 +312,7 @@ export function freeSlot(data, key, dur, excludeId = null, after = 0) {
   let ws = Math.max(win[0], after);
   if (key === todayKey()) ws = Math.max(ws, ceilTo(currentMin(), ROUND));
   if (ws + dur > win[1]) return null;
-  const busy = commitmentsOn(data.commitments, key).map((c) => [c.s, c.e]);
+  const busy = commitmentsOn(data.commitments, key, data.habits || []).map((c) => [c.s, c.e]);
   for (const b of data.blocks) {
     if (b.date === key && b.id !== excludeId && b.status !== 'missed') busy.push([b.start, b.start + b.duration]);
   }

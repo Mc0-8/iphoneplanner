@@ -3,7 +3,7 @@
 // so a new version pushed to GitHub shows up the next time the app is opened.
 // Bump CACHE when the list of files changes.
 
-const CACHE = 'planner-v4';
+const CACHE = 'planner-v5';
 const FILES = [
   './',
   'index.html',

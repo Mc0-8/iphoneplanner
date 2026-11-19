@@ -4,7 +4,7 @@ import { icon } from '../icons.js';
 import { esc, h, openSheet, toast } from '../ui.js';
 import * as store from '../store.js';
 import { state } from '../store.js';
-import { todayKey, addDays, weekday, fromKey } from '../dates.js';
+import { todayKey, addDays, weekday, fromKey, formatMinutes, fromMin, toMin } from '../dates.js';
 import { WEEK } from './schedule.js';
 
 const dueOn = (habit, key) => habit.weekdays.includes(weekday(key));
@@ -27,7 +27,7 @@ function checkRow(habit) {
       <button class="check" type="button" aria-label="${done ? 'Not done' : 'Done'}"><span>${icon('check', 14)}</span></button>
       <button class="row-body" type="button">
         <span class="title">${esc(habit.name)}</span>
-        <span class="sub">${streakText(habit)}</span>
+        <span class="sub">${habit.time ? `<span class="num">${habit.time}–${fromMin(toMin(habit.time) + (habit.duration || 30))}</span>` : ''}${streakText(habit)}</span>
       </button>
       <span class="week-dots" aria-hidden="true">${lastSeven(habit)}</span>
     </div></li>`);
@@ -49,7 +49,7 @@ function lastSeven(habit) {
 /** Section for Today: only habits due today. */
 export function habitsToday() {
   const today = todayKey();
-  const list = state.habits.filter((x) => dueOn(x, today));
+  const list = state.habits.filter((x) => dueOn(x, today) && !x.time);
   if (!list.length) return null;
   const done = list.filter((x) => x.done.includes(today)).length;
   const s = h(`
@@ -76,7 +76,8 @@ export function habitsSection() {
 }
 
 export function openHabitEditor(existing) {
-  const habit = existing ? structuredClone(existing) : { id: store.uid(), name: '', weekdays: [1, 2, 3, 4, 5, 6, 0], done: [], createdAt: Date.now() };
+  const habit = existing ? structuredClone(existing) : { id: store.uid(), name: '', weekdays: [1, 2, 3, 4, 5, 6, 0], done: [], time: null, duration: 30, createdAt: Date.now() };
+  if (!habit.duration) habit.duration = 30;
   openSheet({
     title: existing ? 'Edit habit' : 'New habit',
     action: 'Save',
@@ -96,7 +97,28 @@ export function openHabitEditor(existing) {
         <div class="field">
           <span class="label">Days</span>
           <div class="chips">${WEEK.map(([wd, n]) => `<button type="button" class="chip" data-wd="${wd}" aria-pressed="${habit.weekdays.includes(wd)}">${n.slice(0, 3)}</button>`).join('')}</div>
+        </div>
+        <label class="field field-row">
+          <span>At a set time<span class="hint">It shows in your day and the planner keeps that time free</span></span>
+          <input type="checkbox" class="switch" data-timed ${habit.time ? 'checked' : ''}>
+        </label>
+        <div class="field" data-time-fields ${habit.time ? '' : 'hidden'}>
+          <span class="label">Time</span>
+          <input class="input num" type="time" step="300" value="${habit.time || '18:00'}" data-time style="width:auto">
+          <span class="label" style="margin-top:14px">How long</span>
+          <div class="chips">${[15, 30, 45, 60, 90, 120].map((m) => `<button type="button" class="chip" data-dur="${m}" aria-pressed="${habit.duration === m}">${formatMinutes(m)}</button>`).join('')}</div>
         </div>`;
+      const timed = body.querySelector('[data-timed]');
+      const timeIn = body.querySelector('[data-time]');
+      timed.addEventListener('change', () => {
+        habit.time = timed.checked ? (timeIn.value || '18:00') : null;
+        body.querySelector('[data-time-fields]').hidden = !timed.checked;
+      });
+      timeIn.addEventListener('change', () => { if (timed.checked && timeIn.value) habit.time = timeIn.value; });
+      body.querySelectorAll('[data-dur]').forEach((b) => b.addEventListener('click', () => {
+        habit.duration = Number(b.dataset.dur);
+        body.querySelectorAll('[data-dur]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      }));
       const name = body.querySelector('.title-input');
       const sync = () => { saveBtn.disabled = !habit.name.trim() || !habit.weekdays.length; };
       name.addEventListener('input', () => { habit.name = name.value; sync(); });

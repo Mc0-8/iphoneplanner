@@ -40,8 +40,12 @@ export function render(el) {
   el.querySelector('[data-replan]').addEventListener('click', async () => {
     const wk = addDays(first, page * 7);
     const pinned = state.blocks.filter((b) => b.pinned && b.status === 'planned' && b.date >= wk && b.date <= addDays(wk, 6) && b.date >= today).length;
+    const sig = () => state.blocks.filter((b) => b.date >= wk && b.date <= addDays(wk, 6) && b.status === 'planned')
+      .map((b) => `${b.id}${b.date}${b.start}`).sort().join('|');
+    const before = sig();
     await store.respreadWeek(wk, addDays(wk, 6));
-    toast(pinned ? `Re-spread ${weekRange(wk)}. ${pinned} pinned block${pinned === 1 ? '' : 's'} unpinned.` : `Re-spread ${weekRange(wk)}`);
+    if (sig() === before) toast('Already spread as evenly as your free time allows');
+    else toast(pinned ? `Re-spread ${weekRange(wk)}. ${pinned} pinned block${pinned === 1 ? '' : 's'} unpinned.` : `Re-spread ${weekRange(wk)}`);
   });
 
   const summary = weekSummary(today);

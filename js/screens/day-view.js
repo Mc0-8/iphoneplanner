@@ -54,7 +54,7 @@ function render(root, key, go, scrollToFocus) {
   const first = today, last = horizonEnd(today);
   const prevScroll = root.querySelector('.zoom-body')?.scrollTop;
   const blocks = state.blocks.filter((b) => b.date === key && !(b.status === 'missed' && key >= today));
-  const fixed = commitmentsOn(state.commitments, key);
+  const fixed = commitmentsOn(state.commitments, key, state.habits);
   const win = windowFor(state.settings, state.daysOff, key);
   const live = blocks.filter((b) => b.status !== 'missed');
   const planned = live.reduce((s, b) => s + b.duration, 0);
@@ -120,7 +120,7 @@ function render(root, key, go, scrollToFocus) {
           return `<div class="zhour" style="top:${y(m)}px"><span class="num">${fromMin(m % 1440)}</span></div>`;
         }).join('')}
         ${win ? `<div class="zwin" style="top:${y(win[0])}px;height:${(win[1] - win[0]) * PX}px"></div>` : ''}
-        ${fixed.map((c) => `<div class="zfixed" style="top:${y(c.s)}px;height:${(c.e - c.s) * PX}px"><span>${esc(c.name)}</span><span class="num">${c.start}–${c.end}</span></div>`).join('')}
+        ${fixed.map((c) => `<div class="zfixed${c.kind === 'habit' ? ' zhabit' : ''}" style="top:${y(c.s)}px;height:${(c.e - c.s) * PX}px"><span>${esc(c.name)}${c.kind === 'habit' ? ' · habit' : ''}</span><span class="num">${fromMin(c.s)}–${fromMin(c.e)}</span></div>`).join('')}
         <div class="zblocks"></div>
         ${key === today ? `<div class="now-line" style="top:${y(nowMin())}px"><span class="now-label num">${fromMin(nowMin())}</span></div>` : ''}
       </div>
