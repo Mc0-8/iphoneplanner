@@ -108,11 +108,11 @@ export function openCalendarExport(blocks, label, filename = 'planner.ics', rang
         <p style="margin-top:0">${what}${range ? ` from ${esc(label)}` : ''} as calendar events.</p>
         ${list.length ? `<div class="field">
           <span class="label">Alert before each block</span>
-          <div class="segmented" data-alert>${ALERTS.map(([m, l]) => `<button type="button" data-v="${m}" aria-pressed="${m === alertMin}">${l}</button>`).join('')}</div>
+          <div class="segmented fill" data-alert>${ALERTS.map(([m, l]) => `<button type="button" data-v="${m}" aria-pressed="${m === alertMin}">${l}</button>`).join('')}</div>
         </div>` : ''}
         ${dues.length ? `<div class="field">
           <span class="label">Remind me before deadlines<span class="hint">At ${REMIND_AT}:00</span></span>
-          <div class="segmented" data-due>${DEADLINE_ALERTS.map(([d, l]) => `<button type="button" data-v="${d}" aria-pressed="${d === dueDays}">${l}</button>`).join('')}</div>
+          <div class="segmented fill" data-due>${DEADLINE_ALERTS.map(([d, l]) => `<button type="button" data-v="${d}" aria-pressed="${d === dueDays}">${l}</button>`).join('')}</div>
         </div>` : ''}
         <div class="menu">
           ${canShare ? '<button type="button" class="menu-item" data-how="share"><span>Share to Calendar or Files…</span></button>' : ''}

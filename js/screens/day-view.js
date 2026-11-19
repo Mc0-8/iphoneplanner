@@ -118,7 +118,8 @@ function render(root, key, go, scrollToFocus) {
       <div class="zgrid" style="height:${y(g1) + 8}px">
         ${Array.from({ length: (g1 - g0) / 60 + 1 }, (_, i) => {
           const m = g0 + i * 60;
-          return `<div class="zhour" style="top:${y(m)}px"><span class="num">${fromMin(m % 1440)}</span></div>`;
+          const nearNow = key === today && Math.abs(m - nowMin()) < 20; // the now pill sits in the hour column
+          return `<div class="zhour${nearNow ? ' near-now' : ''}" style="top:${y(m)}px"><span class="num">${fromMin(m % 1440)}</span></div>`;
         }).join('')}
         ${win ? `<div class="zwin" style="top:${y(win[0])}px;height:${(win[1] - win[0]) * PX}px"></div>` : ''}
         ${fixed.map((c) => `<div class="zfixed${c.kind === 'habit' ? ' zhabit' : ''}" style="top:${y(c.s)}px;height:${(c.e - c.s) * PX}px"><span>${esc(c.name)}${c.kind === 'habit' ? ' · habit' : ''}</span><span class="num">${fromMin(c.s)}–${fromMin(c.e)}</span></div>`).join('')}
@@ -164,12 +165,12 @@ function render(root, key, go, scrollToFocus) {
 
 function blockEl(b, y, key, root) {
   const d = describe(b);
-  const short = b.duration < 30;
+  const short = b.duration < 40; // too low for two lines: title and time share one
   const el = h(`
     <button type="button" class="zblock${d.dot ? ' study' : ''}${b.status === 'done' ? ' done' : ''}${b.status === 'missed' ? ' missed' : ''}${short ? ' short' : ''}"
       style="top:${y(b.start)}px;height:${Math.max(18, b.duration * PX - 2)}px;${d.dot ? `--c:${d.dot}` : ''}">
-      <span class="zt">${esc(d.title)}${b.pinned ? ` ${icon('pin', 12)}` : ''}</span>
-      ${short ? '' : `<span class="zs num" data-time>${fromMin(b.start)}–${fromMin(b.start + b.duration)}${d.kindLabel ? ` · ${esc(d.kindLabel)}` : ''}</span>`}
+      <span class="zt"><span class="ztt">${esc(d.title)}</span>${b.pinned ? ` ${icon('pin', 12)}` : ''}</span>
+      <span class="zs num" data-time>${fromMin(b.start)}${short ? '' : `–${fromMin(b.start + b.duration)}${d.kindLabel ? ` · ${esc(d.kindLabel)}` : ''}`}</span>
       ${b.status === 'planned' && b.kind !== 'review' ? '<span class="zresize" aria-hidden="true"></span>' : ''}
     </button>`);
   el.addEventListener('click', () => openBlockMenu(b));
