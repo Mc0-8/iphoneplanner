@@ -81,8 +81,9 @@ export function taskRow(task, { showList = true, hideToday = false } = {}) {
   const list = showList && store.listName(task.listId);
   if (list) bits.push(`<span>${esc(list)}</span>`);
 
+  const colour = task.type === 'exam' && store.subjectById(task.subjectId)?.colour;
   const row = h(`
-    <li class="row${task.completed ? ' done' : ''}" data-id="${task.id}">
+    <li class="row${colour ? ' tinted' : ''}${task.completed ? ' done' : ''}"${colour ? ` style="--sc:${colour}"` : ''} data-id="${task.id}">
       <div class="row-swipe-bg" aria-hidden="true">${icon('check', 18)} Done</div>
       <div class="row-swipe-del" aria-hidden="true">Delete ${icon('trash', 18)}</div>
       <div class="row-inner">

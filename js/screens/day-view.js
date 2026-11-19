@@ -166,7 +166,7 @@ function blockEl(b, y, key, root) {
   const d = describe(b);
   const short = b.duration < 30;
   const el = h(`
-    <button type="button" class="zblock${b.kind === 'study' ? ' study' : ''}${b.status === 'done' ? ' done' : ''}${b.status === 'missed' ? ' missed' : ''}${short ? ' short' : ''}"
+    <button type="button" class="zblock${d.dot ? ' study' : ''}${b.status === 'done' ? ' done' : ''}${b.status === 'missed' ? ' missed' : ''}${short ? ' short' : ''}"
       style="top:${y(b.start)}px;height:${Math.max(18, b.duration * PX - 2)}px;${d.dot ? `--c:${d.dot}` : ''}">
       <span class="zt">${esc(d.title)}${b.pinned ? ` ${icon('pin', 12)}` : ''}</span>
       ${short ? '' : `<span class="zs num" data-time>${fromMin(b.start)}–${fromMin(b.start + b.duration)}${d.kindLabel ? ` · ${esc(d.kindLabel)}` : ''}</span>`}

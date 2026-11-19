@@ -64,7 +64,7 @@ export function render(el) {
     const pctDone = r.minutes ? Math.min(100, (r.done / r.minutes) * 100) : 0;
     const pctPlan = r.minutes ? Math.min(100 - pctDone, (r.planned / r.minutes) * 100) : 0;
     week.querySelector('ul').append(h(`
-      <li class="progress-row">
+      <li class="progress-row tinted" style="--sc:${r.s.colour}">
         <div class="progress-top">
           <span><span class="dot" style="background:${r.s.colour}"></span>${esc(r.s.name)}${r.boosted ? ' <span class="badge">Exam soon</span>' : ''}${store.isPaused(r.s) ? ' <span class="badge muted-badge">Paused</span>' : ''}</span>
           <span class="num muted">${formatMinutes(r.done)} of ${formatMinutes(r.minutes)}</span>
@@ -83,7 +83,7 @@ export function render(el) {
     </section>`);
   for (const s of state.subjects) {
     const row = h(`
-      <li class="row"><div class="row-inner">
+      <li class="row tinted" style="--sc:${s.colour}"><div class="row-inner">
         <button class="row-body" type="button">
           <span class="title"><span class="dot" style="background:${s.colour}"></span>${esc(s.name)}</span>
           <span class="sub"><span class="num">${formatMinutes(Math.round(s.hoursPerWeek * 60))} a week</span>${s.hard ? '<span>Hard: planned early</span>' : ''}${store.isPaused(s) ? `<span class="late">${pauseText(s)}</span>` : ''}</span>

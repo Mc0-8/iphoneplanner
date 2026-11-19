@@ -7,7 +7,7 @@ import { todayKey, formatMinutes, shortDate } from '../dates.js';
 import { openAvailability, openCommitments, openDaysOff, WEEK } from './schedule.js';
 import { badgeSupported, enableBadge, updateBadge } from '../badge.js';
 
-export const VERSION = '0.8.0';
+export const VERSION = '0.9.0';
 
 export function openSettings() {
   openSheet({
